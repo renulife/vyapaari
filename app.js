@@ -1,4 +1,4 @@
-const STORAGE_KEY = "vyapaari.market.ready.v1";
+const STORAGE_KEY = "vyapaari.live.v2";
 
 const navItems = [
   ["dashboard", "Dashboard", "⌂"],
@@ -2434,19 +2434,6 @@ function downloadBlob(content, filename, type) {
 }
 
 document.getElementById("exportBtn").addEventListener("click", exportData);
-document.getElementById("seedBtn").addEventListener("click", () => {
-  if (!confirm("Reset all business data (invoices, items, parties, accounting)? Your login accounts and business profile will be kept. This cannot be undone.")) return;
-  const keepUsers = structuredClone(state.users);
-  const keepBusiness = structuredClone(state.business);
-  const keepSettings = structuredClone(state.settings);
-  state = structuredClone(seedState);
-  state.users = keepUsers;
-  state.business = keepBusiness;
-  state.settings = keepSettings;
-  saveState();
-  showApp();
-  showToast("Business data cleared. Accounts and profile kept.");
-});
 primaryAction.addEventListener("click", () => {
   if (state.view === "billing") createInvoice();
   else setView("billing");
