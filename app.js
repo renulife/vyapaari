@@ -13,6 +13,17 @@ const navItems = [
   ["settings", "Launch Settings", "⚙"],
 ];
 
+// Role-based access control. "all" grants every module; otherwise an allowlist of view ids.
+const ROLE_ACCESS = {
+  Admin: { modules: "all", label: "All modules", canManageUsers: true },
+  Manager: { modules: ["dashboard", "billing", "ai", "inventory", "parties", "accounting", "reports", "ocr", "store"], label: "Everything except launch settings", canManageUsers: false },
+  Cashier: { modules: ["dashboard", "billing", "inventory", "parties"], label: "Billing, POS, payments", canManageUsers: false },
+  Accountant: { modules: ["dashboard", "accounting", "reports", "parties"], label: "Reports, accounting, GST", canManageUsers: false },
+  Sales: { modules: ["dashboard", "billing", "store", "parties"], label: "Billing, online store", canManageUsers: false },
+};
+const ROLE_LIST = Object.keys(ROLE_ACCESS);
+const SESSION_KEY = "vyapaari.session.v1";
+
 const seedState = {
   view: "dashboard",
   business: {
@@ -30,11 +41,13 @@ const seedState = {
     eWayBill: true,
     whatsapp: true,
     offlineMode: true,
+    googleClientId: "",
+    lastBackupAt: "",
   },
   users: [
-    { name: "Owner", role: "Admin", access: "All modules" },
-    { name: "Ravi", role: "Cashier", access: "Billing, POS, payments" },
-    { name: "Meena", role: "Accountant", access: "Reports, accounting, GST" },
+    { id: "U-1", name: "Owner", role: "Admin", access: "All modules", active: true, pinHash: "", salt: "" },
+    { id: "U-2", name: "Ravi", role: "Cashier", access: "Billing, POS, payments", active: true, pinHash: "", salt: "" },
+    { id: "U-3", name: "Meena", role: "Accountant", access: "Reports, accounting, GST", active: true, pinHash: "", salt: "" },
   ],
   parties: [
     { id: "P-101", name: "Ankit Retail", type: "Customer", phone: "9876500011", balance: 18420, terms: 15 },
@@ -74,6 +87,8 @@ const seedState = {
       itemAliases: { rice: "I-1001", oil: "I-1002", bulb: "I-1003", notebook: "I-1004", masala: "I-1005" },
       partyAliases: { ankit: "P-101", kumar: "P-103", freshmart: "P-102", metro: "P-104" },
       learned: [],
+      itemSuggestions: {},
+      partySuggestions: {},
     },
     messages: [
       { role: "assistant", text: "I can create sales invoices, purchase invoices, inventory items, reminders and bulk uploads. Try: sale Ankit Retail Premium Rice 25kg x2 paid upi inclusive" },
@@ -118,11 +133,344 @@ function migrateState(nextState) {
     memory: { ...structuredClone(seedState.ai.memory), ...(nextState.ai?.memory || {}) },
     messages: nextState.ai?.messages?.length ? nextState.ai.messages : structuredClone(seedState.ai.messages),
   };
+  nextState.ai.memory.itemSuggestions = nextState.ai.memory.itemSuggestions || {};
+  nextState.ai.memory.partySuggestions = nextState.ai.memory.partySuggestions || {};
+  nextState.settings = { ...structuredClone(seedState.settings), ...(nextState.settings || {}) };
+  nextState.users = (nextState.users || structuredClone(seedState.users)).map((user, index) => ({
+    id: user.id || `U-${index + 1}`,
+    name: user.name,
+    role: user.role || "Cashier",
+    access: user.access || (ROLE_ACCESS[user.role] ? ROLE_ACCESS[user.role].label : "Billing"),
+    active: user.active !== false,
+    pinHash: user.pinHash || "",
+    salt: user.salt || "",
+  }));
+  seedSuggestionsFromData(nextState);
   return nextState;
+}
+
+// Seed the suggestion memory from existing items/parties so autofill works immediately.
+function seedSuggestionsFromData(target) {
+  (target.items || []).forEach((item) => {
+    const key = normalizeText(item.name);
+    if (!key || target.ai.memory.itemSuggestions[key]) return;
+    target.ai.memory.itemSuggestions[key] = {
+      name: item.name, category: item.category, hsn: item.hsn, gst: item.gst,
+      unit: item.unit, sale: item.sale, purchase: item.purchase, count: 1, lastUsed: item.expiry || "",
+    };
+  });
+  (target.parties || []).forEach((party) => {
+    const key = normalizeText(party.name);
+    if (!key || target.ai.memory.partySuggestions[key]) return;
+    target.ai.memory.partySuggestions[key] = {
+      name: party.name, type: party.type, phone: party.phone, terms: party.terms, count: 1,
+    };
+  });
 }
 
 function saveState() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+/* ============================================================
+   AUTHENTICATION  (local, offline, role-based)
+   ============================================================ */
+const authGate = document.getElementById("authGate");
+const appShell = document.getElementById("appShell");
+let sessionUser = null;
+
+function randomSalt() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function hashPin(pin, salt) {
+  const data = new TextEncoder().encode(`${salt}::${pin}`);
+  const digest = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function needsSetup() {
+  return !state.users.some((user) => user.pinHash);
+}
+
+function readSession() {
+  try {
+    const raw = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return state.users.find((user) => user.id === parsed.userId && user.active) || null;
+  } catch {
+    return null;
+  }
+}
+
+function writeSession(userId, remember) {
+  const payload = JSON.stringify({ userId, ts: Date.now() });
+  sessionStorage.setItem(SESSION_KEY, payload);
+  if (remember) localStorage.setItem(SESSION_KEY, payload);
+  else localStorage.removeItem(SESSION_KEY);
+}
+
+function clearSession() {
+  sessionStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(SESSION_KEY);
+  sessionUser = null;
+}
+
+function accessFor(role) {
+  return ROLE_ACCESS[role] || ROLE_ACCESS.Cashier;
+}
+
+function canAccess(view, user = sessionUser) {
+  if (!user) return false;
+  const rules = accessFor(user.role);
+  return rules.modules === "all" || rules.modules.includes(view);
+}
+
+function bootAuth() {
+  sessionUser = readSession();
+  if (sessionUser) {
+    showApp();
+  } else {
+    renderAuthGate();
+  }
+}
+
+function showApp() {
+  authGate.hidden = true;
+  appShell.hidden = false;
+  if (!canAccess(state.view)) {
+    const rules = accessFor(sessionUser.role);
+    state.view = rules.modules === "all" ? "dashboard" : rules.modules[0];
+  }
+  render();
+  renderUserChip();
+}
+
+function logout() {
+  clearSession();
+  appShell.hidden = true;
+  renderAuthGate();
+  showToast("Signed out. Your data stays saved on this device.");
+}
+
+function renderAuthGate() {
+  authGate.hidden = false;
+  authGate.innerHTML = needsSetup() ? setupScreen() : loginScreen();
+  attachAuthHandlers();
+}
+
+function authBrand() {
+  return `
+    <div class="auth-brand">
+      <div class="brand-mark">V</div>
+      <div><strong>Vyapaari</strong><span>Business OS</span></div>
+    </div>`;
+}
+
+function setupScreen() {
+  return `
+    <div class="auth-card">
+      ${authBrand()}
+      <span class="kicker">First-time setup</span>
+      <h2>Create your admin account</h2>
+      <p class="muted">This owner account has full access. Staff logins with limited roles can be added later from Launch Settings. Everything is stored securely on this device.</p>
+      <form id="setupForm" class="auth-form">
+        <div class="field"><label>Owner name</label><input name="name" value="Owner" required autocomplete="name" /></div>
+        <div class="field"><label>Admin password</label><input name="pin" type="password" minlength="4" required autocomplete="new-password" placeholder="Minimum 4 characters" /></div>
+        <div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="4" required autocomplete="new-password" /></div>
+        <button class="primary-btn auth-submit" type="submit">Create admin account</button>
+      </form>
+    </div>`;
+}
+
+function loginScreen() {
+  const activeUsers = state.users.filter((user) => user.active && user.pinHash);
+  const chips = activeUsers
+    .map((user) => `<button type="button" class="user-pick ${accessFor(user.role).canManageUsers ? "admin" : ""}" data-pick="${user.id}"><span class="avatar">${escapeHtml(user.name.slice(0, 1).toUpperCase())}</span><span><strong>${escapeHtml(user.name)}</strong><small>${escapeHtml(user.role)}</small></span></button>`)
+    .join("");
+  return `
+    <div class="auth-card">
+      ${authBrand()}
+      <span class="kicker">Secure sign in</span>
+      <h2>Welcome back</h2>
+      <p class="muted">Select your profile and enter your password to continue.</p>
+      <div class="user-picker">${chips}</div>
+      <form id="loginForm" class="auth-form">
+        <input type="hidden" name="userId" />
+        <div class="field"><label>Password</label><input name="pin" type="password" required autocomplete="current-password" placeholder="Enter password" /></div>
+        <label class="remember"><input type="checkbox" name="remember" /> Keep me signed in on this device</label>
+        <button class="primary-btn auth-submit" type="submit">Sign in</button>
+      </form>
+    </div>`;
+}
+
+function attachAuthHandlers() {
+  document.getElementById("setupForm")?.addEventListener("submit", handleSetup);
+  const loginForm = document.getElementById("loginForm");
+  if (loginForm) {
+    const hidden = loginForm.querySelector("[name=userId]");
+    const pickers = authGate.querySelectorAll("[data-pick]");
+    const selectUser = (id) => {
+      hidden.value = id;
+      pickers.forEach((btn) => btn.classList.toggle("selected", btn.dataset.pick === id));
+      loginForm.querySelector("[name=pin]").focus();
+    };
+    pickers.forEach((btn) => btn.addEventListener("click", () => selectUser(btn.dataset.pick)));
+    if (pickers.length === 1) selectUser(pickers[0].dataset.pick);
+    loginForm.addEventListener("submit", handleLogin);
+  }
+}
+
+async function handleSetup(event) {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.target).entries());
+  if (data.pin !== data.confirm) return showToast("Passwords do not match.");
+  const salt = randomSalt();
+  const pinHash = await hashPin(data.pin, salt);
+  const admin = state.users.find((user) => user.role === "Admin") || state.users[0];
+  admin.name = data.name || admin.name;
+  admin.role = "Admin";
+  admin.access = ROLE_ACCESS.Admin.label;
+  admin.active = true;
+  admin.salt = salt;
+  admin.pinHash = pinHash;
+  saveState();
+  writeSession(admin.id, true);
+  sessionUser = admin;
+  showApp();
+  showToast(`Admin account ready. Welcome, ${admin.name}.`);
+}
+
+async function handleLogin(event) {
+  event.preventDefault();
+  const data = Object.fromEntries(new FormData(event.target).entries());
+  if (!data.userId) return showToast("Select your profile first.");
+  const user = state.users.find((row) => row.id === data.userId);
+  if (!user || !user.pinHash) return showToast("This profile has no password set yet.");
+  const attempt = await hashPin(data.pin, user.salt);
+  if (attempt !== user.pinHash) return showToast("Incorrect password. Please try again.");
+  writeSession(user.id, Boolean(data.remember));
+  sessionUser = user;
+  showApp();
+  showToast(`Signed in as ${user.name} (${user.role}).`);
+}
+
+function renderUserChip() {
+  const chip = document.getElementById("userChip");
+  if (!chip || !sessionUser) return;
+  chip.innerHTML = `
+    <span class="avatar">${escapeHtml(sessionUser.name.slice(0, 1).toUpperCase())}</span>
+    <span class="user-meta"><strong>${escapeHtml(sessionUser.name)}</strong><small>${escapeHtml(sessionUser.role)}</small></span>
+    <button class="ghost-btn" type="button" data-logout>Sign out</button>`;
+  chip.querySelector("[data-logout]")?.addEventListener("click", logout);
+}
+
+/* ============================================================
+   SELF-LEARNING SUGGESTIONS
+   Remembers items/parties the user enters and suggests them next time.
+   ============================================================ */
+function recordItemSuggestion(item) {
+  const key = normalizeText(item.name);
+  if (!key) return;
+  const store = state.ai.memory.itemSuggestions;
+  const prev = store[key] || { count: 0 };
+  store[key] = {
+    name: item.name,
+    category: item.category ?? prev.category ?? "",
+    hsn: item.hsn ?? prev.hsn ?? "",
+    gst: item.gst ?? prev.gst ?? 0,
+    unit: item.unit ?? prev.unit ?? "pcs",
+    sale: item.sale ?? prev.sale ?? 0,
+    purchase: item.purchase ?? prev.purchase ?? 0,
+    count: prev.count + 1,
+    lastUsed: today(),
+  };
+}
+
+function recordPartySuggestion(party) {
+  const key = normalizeText(party.name);
+  if (!key) return;
+  const store = state.ai.memory.partySuggestions;
+  const prev = store[key] || { count: 0 };
+  store[key] = {
+    name: party.name,
+    type: party.type ?? prev.type ?? "Customer",
+    phone: party.phone ?? prev.phone ?? "",
+    terms: party.terms ?? prev.terms ?? 7,
+    count: prev.count + 1,
+    lastUsed: today(),
+  };
+}
+
+// Sort remembered entries by usage frequency then recency.
+function rankedSuggestions(map) {
+  return Object.values(map || {}).sort((a, b) => (b.count - a.count) || String(b.lastUsed || "").localeCompare(String(a.lastUsed || "")));
+}
+
+function findItemSuggestion(name) {
+  return state.ai.memory.itemSuggestions[normalizeText(name)] || null;
+}
+
+function findPartySuggestion(name) {
+  return state.ai.memory.partySuggestions[normalizeText(name)] || null;
+}
+
+function uniqueValues(map, prop) {
+  const values = new Set();
+  Object.values(map || {}).forEach((entry) => {
+    if (entry[prop] !== undefined && entry[prop] !== null && String(entry[prop]).trim()) values.add(String(entry[prop]));
+  });
+  return Array.from(values);
+}
+
+function optionList(values) {
+  return values.map((value) => `<option value="${escapeHtml(value)}"></option>`).join("");
+}
+
+// Datalist that shows "Name — Category • HSN 1006" style hints.
+function itemSuggestDatalist(id) {
+  const options = rankedSuggestions(state.ai.memory.itemSuggestions)
+    .map((entry) => `<option value="${escapeHtml(entry.name)}">${escapeHtml(entry.category || "")}${entry.hsn ? ` • HSN ${escapeHtml(entry.hsn)}` : ""}</option>`)
+    .join("");
+  return `<datalist id="${id}">${options}</datalist>`;
+}
+
+function partySuggestDatalist(id) {
+  const options = rankedSuggestions(state.ai.memory.partySuggestions)
+    .map((entry) => `<option value="${escapeHtml(entry.name)}">${escapeHtml(entry.type || "")}${entry.phone ? ` • ${escapeHtml(entry.phone)}` : ""}</option>`)
+    .join("");
+  return `<datalist id="${id}">${options}</datalist>`;
+}
+
+// Quick-fill chips showing the most-used remembered items.
+function suggestionChips(target) {
+  const top = rankedSuggestions(state.ai.memory.itemSuggestions).slice(0, 6);
+  if (!top.length) return "";
+  return `
+    <div class="suggest-strip" aria-label="Frequently used items">
+      <span class="suggest-label">Frequent</span>
+      ${top.map((entry) => `<button type="button" class="suggest-chip" data-suggest-fill="${target}" data-name="${escapeHtml(entry.name)}"><strong>${escapeHtml(entry.name)}</strong><small>${escapeHtml(entry.category || "")}${entry.hsn ? ` • HSN ${escapeHtml(entry.hsn)}` : ""}</small></button>`).join("")}
+    </div>`;
+}
+
+// Fill the inventory form fields from a remembered item.
+function applyItemSuggestion(form, name) {
+  const hit = findItemSuggestion(name);
+  if (!form || !hit) return false;
+  const set = (field, value) => {
+    const el = form.querySelector(`[name=${field}]`);
+    if (el && (!el.value || field !== "name")) el.value = value;
+  };
+  form.querySelector("[name=name]").value = hit.name;
+  set("hsn", hit.hsn);
+  set("category", hit.category);
+  set("unit", hit.unit);
+  if (hit.gst !== undefined) form.querySelector("[name=gst]").value = hit.gst;
+  if (hit.purchase) form.querySelector("[name=purchase]").value = hit.purchase;
+  if (hit.sale) form.querySelector("[name=sale]").value = hit.sale;
+  return true;
 }
 
 function money(value) {
@@ -218,9 +566,11 @@ function showToast(message) {
 }
 
 function setView(view) {
+  if (!canAccess(view)) return showToast("Your role does not have access to that module.");
   state.view = view;
   saveState();
   render();
+  closeMobileNav();
 }
 
 function statusClass(status) {
@@ -241,6 +591,7 @@ function barcodeFor(text) {
 
 function renderNav() {
   nav.innerHTML = navItems
+    .filter(([id]) => canAccess(id))
     .map(
       ([id, label, icon]) => `
         <button class="nav-item ${state.view === id ? "active" : ""}" type="button" data-view="${id}">
@@ -352,6 +703,11 @@ function renderBilling() {
               </div>
             </div>
           </div>
+          <div class="quick-add" style="margin-top:16px">
+            <input id="quickAddItem" list="billingItemSuggest" placeholder="Quick add: type an item name and press Enter" autocomplete="off" />
+            <button class="ghost-btn" type="button" data-quick-add>Add</button>
+          </div>
+          ${itemSuggestDatalist("billingItemSuggest")}
           <div class="invoice-lines" style="margin-top:16px">
             ${draft.lines.map((line, index) => `
               <div class="invoice-line">
@@ -439,14 +795,15 @@ function renderInventory() {
       </div>
 
       <article class="panel">
-        <div class="panel-title"><div><span class="kicker">Stock master</span><h2>Add item, barcode, GST and batch</h2></div></div>
+        <div class="panel-title"><div><span class="kicker">Stock master</span><h2>Add item, barcode, GST and batch</h2></div><span class="muted">Type a name you have used before to auto-fill</span></div>
+        ${suggestionChips("itemForm")}
         <form id="itemForm" class="form-grid three">
-          <div class="field"><label>Name</label><input name="name" required placeholder="Product name" /></div>
-          <div class="field"><label>HSN</label><input name="hsn" required placeholder="HSN code" /></div>
-          <div class="field"><label>Category</label><input name="category" required placeholder="Category" /></div>
+          <div class="field"><label>Name</label><input name="name" list="itemNameSuggest" required placeholder="Start typing, e.g. Premium Rice 25kg" autocomplete="off" /></div>
+          <div class="field"><label>HSN</label><input name="hsn" list="hsnSuggest" required placeholder="HSN code" /></div>
+          <div class="field"><label>Category</label><input name="category" list="categorySuggest" required placeholder="Category" /></div>
           <div class="field"><label>Stock</label><input name="stock" type="number" min="0" required /></div>
           <div class="field"><label>Min stock</label><input name="minStock" type="number" min="0" required /></div>
-          <div class="field"><label>Unit</label><input name="unit" value="pcs" required /></div>
+          <div class="field"><label>Unit</label><input name="unit" list="unitSuggest" value="pcs" required /></div>
           <div class="field"><label>Purchase price</label><input name="purchase" type="number" min="0" required /></div>
           <div class="field"><label>Sale price</label><input name="sale" type="number" min="0" required /></div>
           <div class="field"><label>GST %</label><input name="gst" type="number" min="0" required /></div>
@@ -454,6 +811,10 @@ function renderInventory() {
           <div class="field"><label>Expiry</label><input name="expiry" type="date" /></div>
           <div class="field"><label>&nbsp;</label><button class="primary-btn" type="submit">Add item</button></div>
         </form>
+        ${itemSuggestDatalist("itemNameSuggest")}
+        <datalist id="categorySuggest">${optionList(uniqueValues(state.ai.memory.itemSuggestions, "category"))}</datalist>
+        <datalist id="hsnSuggest">${optionList(uniqueValues(state.ai.memory.itemSuggestions, "hsn"))}</datalist>
+        <datalist id="unitSuggest">${optionList(uniqueValues(state.ai.memory.itemSuggestions, "unit").concat(["pcs", "bag", "bottle", "pkt", "box", "kg", "litre"]).filter((v, i, a) => a.indexOf(v) === i))}</datalist>
       </article>
 
       <article class="panel">
@@ -496,13 +857,14 @@ function renderParties() {
       <article class="panel">
         <div class="panel-title"><h2>Party management</h2><span class="muted">Customers, suppliers, terms and balances</span></div>
         <form id="partyForm" class="form-grid three">
-          <div class="field"><label>Name</label><input name="name" required /></div>
+          <div class="field"><label>Name</label><input name="name" list="partyNameSuggest" required autocomplete="off" placeholder="Start typing a saved party" /></div>
           <div class="field"><label>Type</label><select name="type"><option>Customer</option><option>Supplier</option></select></div>
           <div class="field"><label>Phone</label><input name="phone" required /></div>
           <div class="field"><label>Opening balance</label><input name="balance" type="number" value="0" /></div>
           <div class="field"><label>Credit days</label><input name="terms" type="number" value="7" /></div>
           <div class="field"><label>&nbsp;</label><button class="primary-btn" type="submit">Add party</button></div>
         </form>
+        ${partySuggestDatalist("partyNameSuggest")}
       </article>
       <article class="panel">
         <div class="table-wrap">
@@ -774,25 +1136,85 @@ function renderSettings() {
             ${settingRow("GST e-invoice", "eInvoice")}
             ${settingRow("E-way bill", "eWayBill")}
             ${settingRow("WhatsApp reminders", "whatsapp")}
-            ${settingRow("Google Drive backup", "autoBackup")}
+            ${settingRow("Auto-backup reminder", "autoBackup")}
             ${settingRow("Offline billing", "offlineMode")}
-          </div>
-          <div class="topbar-actions" style="margin-top:18px; justify-content:flex-start">
-            <button class="ghost-btn" type="button" data-export-json>Backup JSON</button>
-            <label class="ghost-btn" style="display:inline-flex; align-items:center; gap:8px">Import JSON <input id="importJson" type="file" accept="application/json" hidden /></label>
           </div>
         </article>
       </section>
-      <article class="panel">
-        <div class="panel-title"><h3>Role-based access</h3><button class="ghost-btn" type="button" data-add-user>Add staff user</button></div>
-        <div class="table-wrap"><table><thead><tr><th>User</th><th>Role</th><th>Access</th></tr></thead><tbody>${state.users.map((user) => `<tr><td><strong>${user.name}</strong></td><td>${user.role}</td><td>${user.access}</td></tr>`).join("")}</tbody></table></div>
-      </article>
+
+      ${renderBackupPanel()}
+      ${renderUsersPanel()}
     </section>
   `;
 }
 
 function settingRow(label, key) {
   return `<div class="list-row"><span>${label}</span><button class="ghost-btn" type="button" data-setting="${key}">${state.settings[key] ? "On" : "Off"}</button></div>`;
+}
+
+function renderBackupPanel() {
+  const last = state.settings.lastBackupAt ? new Date(state.settings.lastBackupAt).toLocaleString("en-IN") : "Never";
+  const hasClientId = Boolean(String(state.settings.googleClientId || "").trim());
+  return `
+    <section class="two-col">
+      <article class="panel">
+        <div class="panel-title"><div><span class="kicker">Data safety</span><h2>Backup &amp; restore</h2></div><span class="muted">Last backup: ${last}</span></div>
+        <p class="muted">Your business data lives on this device. Export a backup regularly and keep it somewhere safe such as Google Drive.</p>
+        <div class="backup-grid">
+          <button class="ghost-btn" type="button" data-export-json>Download backup (JSON)</button>
+          <label class="ghost-btn file-btn">Restore JSON<input id="importJson" type="file" accept="application/json" hidden /></label>
+          <button class="primary-btn" type="button" data-export-enc>Encrypted backup</button>
+          <label class="ghost-btn file-btn">Restore encrypted<input id="importEnc" type="file" accept=".vyp,application/octet-stream,application/json" hidden /></label>
+        </div>
+      </article>
+      <article class="panel">
+        <div class="panel-title"><div><span class="kicker">Optional</span><h2>Google Drive backup</h2></div><span class="status ${hasClientId ? "ok" : "pending"}">${hasClientId ? "Configured" : "Not set"}</span></div>
+        <p class="muted">Connect a Google account to save and restore backups from your private Drive app folder. Paste a Google OAuth Client ID (from Google Cloud Console) authorized for this site's URL.</p>
+        <form id="googleForm" class="form-grid">
+          <div class="field full"><label>Google OAuth Client ID</label><input name="googleClientId" value="${escapeHtml(state.settings.googleClientId || "")}" placeholder="xxxx.apps.googleusercontent.com" /></div>
+          <div class="field full"><button class="ghost-btn" type="submit">Save Client ID</button></div>
+        </form>
+        <div class="backup-grid">
+          <button class="primary-btn" type="button" data-google-backup ${hasClientId ? "" : "disabled"}>Connect &amp; back up</button>
+          <button class="ghost-btn" type="button" data-google-restore ${hasClientId ? "" : "disabled"}>Restore from Drive</button>
+        </div>
+      </article>
+    </section>`;
+}
+
+function renderUsersPanel() {
+  const isAdmin = accessFor(sessionUser?.role).canManageUsers;
+  const rows = state.users
+    .map((user) => {
+      const you = user.id === sessionUser?.id;
+      const controls = isAdmin && !you
+        ? `<button class="ghost-btn" type="button" data-toggle-user="${user.id}">${user.active ? "Disable" : "Enable"}</button>
+           <button class="ghost-btn" type="button" data-reset-user="${user.id}">Reset password</button>
+           <button class="danger-btn" type="button" data-remove-user="${user.id}">Remove</button>`
+        : you ? `<span class="muted">Signed in</span>` : `<span class="muted">—</span>`;
+      return `<tr>
+        <td><strong>${escapeHtml(user.name)}</strong>${user.pinHash ? "" : ` <span class="status pending">No password</span>`}</td>
+        <td>${escapeHtml(user.role)}</td>
+        <td>${escapeHtml(accessFor(user.role).label)}</td>
+        <td>${user.active ? `<span class="status ok">Active</span>` : `<span class="status danger">Disabled</span>`}</td>
+        <td class="row-actions">${controls}</td>
+      </tr>`;
+    })
+    .join("");
+  const addForm = isAdmin
+    ? `<form id="addUserForm" class="form-grid three">
+        <div class="field"><label>Staff name</label><input name="name" required placeholder="e.g. Priya" /></div>
+        <div class="field"><label>Role</label><select name="role">${ROLE_LIST.map((role) => `<option value="${role}">${role}</option>`).join("")}</select></div>
+        <div class="field"><label>Password</label><input name="pin" type="password" minlength="4" required placeholder="Set a login password" /></div>
+        <div class="field"><label>&nbsp;</label><button class="primary-btn" type="submit">Add staff login</button></div>
+      </form>`
+    : `<p class="muted">Only an Admin can add or manage staff logins.</p>`;
+  return `
+    <article class="panel">
+      <div class="panel-title"><div><span class="kicker">Team</span><h2>Logins &amp; role-based access</h2></div><span class="muted">${state.users.filter((u) => u.active).length} active</span></div>
+      ${addForm}
+      <div class="table-wrap" style="margin-top:16px"><table><thead><tr><th>User</th><th>Role</th><th>Access</th><th>Status</th><th>Manage</th></tr></thead><tbody>${rows}</tbody></table></div>
+    </article>`;
 }
 
 const renderers = {
@@ -848,6 +1270,25 @@ function attachViewHandlers() {
     render();
   });
 
+  const quickAddInput = document.querySelector("#quickAddItem");
+  const quickAdd = () => {
+    const value = quickAddInput?.value.trim();
+    if (!value) return;
+    const item = findItemFromText(value) || state.items.find((row) => normalizeText(row.name) === normalizeText(value));
+    if (!item) return showToast("No matching item found. Add it in Inventory first.");
+    state.invoiceDraft.lines.push({ itemId: item.id, qty: 1, discount: 0 });
+    saveState();
+    render();
+    showToast(`${item.name} added to the invoice.`);
+  };
+  document.querySelector("[data-quick-add]")?.addEventListener("click", quickAdd);
+  quickAddInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.isComposing && event.keyCode !== 229) {
+      event.preventDefault();
+      quickAdd();
+    }
+  });
+
   document.querySelectorAll("[data-remove-line]").forEach((button) => {
     button.addEventListener("click", () => {
       if (state.invoiceDraft.lines.length === 1) return showToast("Invoice needs at least one item.");
@@ -880,8 +1321,32 @@ function attachViewHandlers() {
     });
   });
 
-  document.querySelector("#itemForm")?.addEventListener("submit", addItem);
-  document.querySelector("#partyForm")?.addEventListener("submit", addParty);
+  const itemForm = document.querySelector("#itemForm");
+  itemForm?.addEventListener("submit", addItem);
+  // Auto-fill remembered details when a known item name is entered.
+  itemForm?.querySelector("[name=name]")?.addEventListener("change", (event) => {
+    if (applyItemSuggestion(itemForm, event.target.value)) showToast("Auto-filled from your saved items.");
+  });
+  document.querySelectorAll("[data-suggest-fill]").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      const form = document.querySelector(`#${chip.dataset.suggestFill}`);
+      if (applyItemSuggestion(form, chip.dataset.name)) {
+        showToast(`Loaded ${chip.dataset.name}. Set stock and prices, then save.`);
+        form.querySelector("[name=stock]")?.focus();
+      }
+    });
+  });
+  const partyForm = document.querySelector("#partyForm");
+  partyForm?.addEventListener("submit", addParty);
+  partyForm?.querySelector("[name=name]")?.addEventListener("change", (event) => {
+    const hit = findPartySuggestion(event.target.value);
+    if (!hit) return;
+    partyForm.querySelector("[name=name]").value = hit.name;
+    if (hit.type) partyForm.querySelector("[name=type]").value = hit.type;
+    if (hit.phone) partyForm.querySelector("[name=phone]").value = hit.phone;
+    if (hit.terms !== undefined) partyForm.querySelector("[name=terms]").value = hit.terms;
+    showToast("Auto-filled from your saved parties.");
+  });
   document.querySelector("#expenseForm")?.addEventListener("submit", addExpense);
   document.querySelector("#journalForm")?.addEventListener("submit", addJournal);
   document.querySelector("#businessForm")?.addEventListener("submit", saveBusiness);
@@ -916,7 +1381,6 @@ function attachViewHandlers() {
   document.querySelectorAll("[data-promote]").forEach((button) => button.addEventListener("click", () => showToast(`WhatsApp offer generated for ${byId(state.items, button.dataset.promote).name}.`)));
   document.querySelector("[data-convert-order]")?.addEventListener("click", convertOrder);
   document.querySelector("[data-broadcast]")?.addEventListener("click", () => showToast("Campaign queued for customers with opt-in consent."));
-  document.querySelector("[data-add-user]")?.addEventListener("click", addUser);
   document.querySelectorAll("[data-setting]").forEach((button) => {
     button.addEventListener("click", () => {
       state.settings[button.dataset.setting] = !state.settings[button.dataset.setting];
@@ -926,6 +1390,40 @@ function attachViewHandlers() {
   });
   document.querySelector("[data-export-json]")?.addEventListener("click", exportData);
   document.querySelector("#importJson")?.addEventListener("change", importData);
+  document.querySelector("[data-export-enc]")?.addEventListener("click", exportEncrypted);
+  document.querySelector("#importEnc")?.addEventListener("change", importEncrypted);
+  document.querySelector("#googleForm")?.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.settings.googleClientId = new FormData(event.target).get("googleClientId").trim();
+    saveState();
+    render();
+    showToast("Google Client ID saved.");
+  });
+  document.querySelector("[data-google-backup]")?.addEventListener("click", () => connectGoogle("backup"));
+  document.querySelector("[data-google-restore]")?.addEventListener("click", () => connectGoogle("restore"));
+
+  // Staff / user management (admin only)
+  document.querySelector("#addUserForm")?.addEventListener("submit", addStaffUser);
+  document.querySelectorAll("[data-toggle-user]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const user = state.users.find((row) => row.id === button.dataset.toggleUser);
+      if (user) { user.active = !user.active; saveState(); render(); showToast(`${user.name} ${user.active ? "enabled" : "disabled"}.`); }
+    });
+  });
+  document.querySelectorAll("[data-reset-user]").forEach((button) => {
+    button.addEventListener("click", () => resetUserPassword(button.dataset.resetUser));
+  });
+  document.querySelectorAll("[data-remove-user]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const user = state.users.find((row) => row.id === button.dataset.removeUser);
+      if (!user) return;
+      if (!confirm(`Remove ${user.name}? They will no longer be able to sign in.`)) return;
+      state.users = state.users.filter((row) => row.id !== user.id);
+      saveState();
+      render();
+      showToast(`${user.name} removed.`);
+    });
+  });
   document.querySelectorAll("[data-ai-example]").forEach((button) => {
     button.addEventListener("click", () => {
       const input = document.querySelector("#aiChatForm textarea");
@@ -954,7 +1452,7 @@ function createInvoice() {
 function addItem(event) {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
-  state.items.unshift({
+  const item = {
     id: `I-${1001 + state.items.length}`,
     name: data.name,
     hsn: data.hsn,
@@ -967,26 +1465,30 @@ function addItem(event) {
     gst: Number(data.gst),
     batch: data.batch,
     expiry: data.expiry,
-  });
+  };
+  state.items.unshift(item);
+  recordItemSuggestion(item);
   saveState();
   render();
-  showToast("Item added with barcode and GST details.");
+  showToast("Item saved. Vyapaari will suggest it next time you type the name.");
 }
 
 function addParty(event) {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
-  state.parties.unshift({
+  const party = {
     id: `P-${101 + state.parties.length}`,
     name: data.name,
     type: data.type,
     phone: data.phone,
     balance: Number(data.balance),
     terms: Number(data.terms),
-  });
+  };
+  state.parties.unshift(party);
+  recordPartySuggestion(party);
   saveState();
   render();
-  showToast("Party added with payment terms.");
+  showToast("Party saved and remembered for quick reuse.");
 }
 
 function addExpense(event) {
@@ -1108,6 +1610,7 @@ function ensureParty(name, type) {
   const party = { id: `P-${101 + state.parties.length}`, name: name || `${type} ${state.parties.length + 1}`, type, phone: "", balance: 0, terms: type === "Customer" ? 10 : 7 };
   state.parties.unshift(party);
   state.ai.memory.partyAliases[normalizeText(party.name).split(" ")[0]] = party.id;
+  recordPartySuggestion(party);
   return party;
 }
 
@@ -1182,8 +1685,13 @@ function postInvoice(invoice) {
   state.invoices.unshift(invoice);
   invoice.lines.forEach((line) => {
     const item = byId(state.items, line.itemId);
-    if (item) item.stock = Math.max(0, item.stock - Number(line.qty || 0));
+    if (item) {
+      item.stock = Math.max(0, item.stock - Number(line.qty || 0));
+      recordItemSuggestion(item);
+    }
   });
+  const invParty = byId(state.parties, invoice.partyId);
+  if (invParty) recordPartySuggestion(invParty);
   const total = invoiceTotal(invoice).total;
   const party = byId(state.parties, invoice.partyId);
   if (party && invoice.status !== "Paid") party.balance += Math.round(total);
@@ -1278,9 +1786,23 @@ function downloadCsv() {
   downloadBlob(csv, "vyapaari-gst-report.csv", "text/csv");
 }
 
+function markBackup() {
+  state.settings.lastBackupAt = new Date().toISOString();
+  saveState();
+}
+
 function exportData() {
   downloadBlob(JSON.stringify(state, null, 2), "vyapaari-backup.json", "application/json");
-  showToast("Backup JSON exported.");
+  markBackup();
+  showToast("Backup JSON exported. Save it to Google Drive or any safe folder.");
+}
+
+function applyRestoredState(parsed) {
+  state = migrateState({ ...structuredClone(seedState), ...parsed });
+  saveState();
+  if (sessionUser) sessionUser = state.users.find((user) => user.id === sessionUser.id) || sessionUser;
+  render();
+  renderUserChip();
 }
 
 function importData(event) {
@@ -1289,15 +1811,161 @@ function importData(event) {
   const reader = new FileReader();
   reader.onload = () => {
     try {
-      state = JSON.parse(reader.result);
-      saveState();
-      render();
+      applyRestoredState(JSON.parse(reader.result));
       showToast("Backup imported successfully.");
     } catch {
       showToast("Import failed. Please choose a valid Vyapaari JSON backup.");
     }
   };
   reader.readAsText(file);
+}
+
+/* ---------- Encrypted backup (AES-GCM + PBKDF2) ---------- */
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(b64) {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+async function deriveKey(passphrase, salt) {
+  const material = await crypto.subtle.importKey("raw", new TextEncoder().encode(passphrase), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 120000, hash: "SHA-256" },
+    material,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+async function exportEncrypted() {
+  const passphrase = window.prompt("Set a password for this encrypted backup. You will need it to restore.");
+  if (!passphrase) return;
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(passphrase, salt);
+  const plain = new TextEncoder().encode(JSON.stringify(state));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plain));
+  const payload = { format: "vyapaari-enc-v1", salt: bytesToBase64(salt), iv: bytesToBase64(iv), data: bytesToBase64(cipher) };
+  downloadBlob(JSON.stringify(payload), "vyapaari-secure-backup.vyp", "application/octet-stream");
+  markBackup();
+  showToast("Encrypted backup downloaded.");
+}
+
+function importEncrypted(event) {
+  const file = event.target.files?.[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      if (payload.format !== "vyapaari-enc-v1") throw new Error("format");
+      const passphrase = window.prompt("Enter the password for this encrypted backup.");
+      if (!passphrase) return;
+      const key = await deriveKey(passphrase, base64ToBytes(payload.salt));
+      const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: base64ToBytes(payload.iv) }, key, base64ToBytes(payload.data));
+      applyRestoredState(JSON.parse(new TextDecoder().decode(plain)));
+      showToast("Encrypted backup restored.");
+    } catch {
+      showToast("Restore failed. Check the file and password.");
+    }
+  };
+  reader.readAsText(file);
+}
+
+/* ---------- Optional Google Drive backup ---------- */
+let googleToken = null;
+
+function loadScript(src) {
+  return new Promise((resolve, reject) => {
+    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("script"));
+    document.head.appendChild(el);
+  });
+}
+
+async function connectGoogle(action) {
+  const clientId = String(state.settings.googleClientId || "").trim();
+  if (!clientId) return showToast("Add your Google OAuth Client ID in Google backup settings first.");
+  try {
+    await loadScript("https://accounts.google.com/gsi/client");
+  } catch {
+    return showToast("Could not load Google sign-in. Check your internet connection.");
+  }
+  try {
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: "https://www.googleapis.com/auth/drive.appdata",
+      callback: async (response) => {
+        if (response.error) return showToast("Google sign-in was cancelled.");
+        googleToken = response.access_token;
+        if (action === "restore") await driveRestore();
+        else await driveBackup();
+      },
+    });
+    tokenClient.requestAccessToken();
+  } catch {
+    showToast("Google sign-in failed. Verify the Client ID and authorized origin.");
+  }
+}
+
+async function findDriveFileId() {
+  const res = await fetch("https://www.googleapis.com/drive/v3/files?spaces=appDataFolder&fields=files(id,name)", {
+    headers: { Authorization: `Bearer ${googleToken}` },
+  });
+  const json = await res.json();
+  return (json.files || []).find((f) => f.name === "vyapaari-backup.json")?.id || null;
+}
+
+async function driveBackup() {
+  try {
+    const existingId = await findDriveFileId();
+    const metadata = { name: "vyapaari-backup.json", mimeType: "application/json" };
+    if (!existingId) metadata.parents = ["appDataFolder"];
+    const boundary = "vyapaari" + Date.now();
+    const body =
+      `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
+      `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(state)}\r\n--${boundary}--`;
+    const url = existingId
+      ? `https://www.googleapis.com/upload/drive/v3/files/${existingId}?uploadType=multipart`
+      : "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart";
+    await fetch(url, {
+      method: existingId ? "PATCH" : "POST",
+      headers: { Authorization: `Bearer ${googleToken}`, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body,
+    });
+    markBackup();
+    showToast("Backup saved to your Google Drive.");
+  } catch {
+    showToast("Google Drive backup failed. Please try again.");
+  }
+}
+
+async function driveRestore() {
+  try {
+    const fileId = await findDriveFileId();
+    if (!fileId) return showToast("No Vyapaari backup found in your Google Drive.");
+    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+      headers: { Authorization: `Bearer ${googleToken}` },
+    });
+    applyRestoredState(await res.json());
+    showToast("Restored from your Google Drive backup.");
+  } catch {
+    showToast("Google Drive restore failed. Please try again.");
+  }
 }
 
 function downloadBlob(content, filename, type) {
@@ -1312,10 +1980,13 @@ function downloadBlob(content, filename, type) {
 
 document.getElementById("exportBtn").addEventListener("click", exportData);
 document.getElementById("seedBtn").addEventListener("click", () => {
-  localStorage.removeItem(STORAGE_KEY);
+  if (!confirm("Reset demo business data? Your login accounts will be kept.")) return;
+  const keepUsers = structuredClone(state.users);
   state = structuredClone(seedState);
-  render();
-  showToast("Demo data reset.");
+  state.users = keepUsers;
+  saveState();
+  showApp();
+  showToast("Demo data reset. Accounts kept.");
 });
 primaryAction.addEventListener("click", () => {
   if (state.view === "billing") createInvoice();
@@ -1326,10 +1997,24 @@ nav.addEventListener("click", (event) => {
   if (button) setView(button.dataset.view);
 });
 
+// Mobile navigation drawer
+const navToggle = document.getElementById("navToggle");
+const scrim = document.getElementById("scrim");
+function openMobileNav() {
+  document.body.classList.add("nav-open");
+}
+function closeMobileNav() {
+  document.body.classList.remove("nav-open");
+}
+navToggle?.addEventListener("click", () => {
+  document.body.classList.toggle("nav-open");
+});
+scrim?.addEventListener("click", closeMobileNav);
+
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("service-worker.js").catch(() => {});
   });
 }
 
-render();
+bootAuth();
