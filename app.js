@@ -701,8 +701,8 @@ function renderNav() {
     .join("");
 }
 
-function metric(label, value, note) {
-  return `<article class="metric"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
+function metric(label, value, note, tone) {
+  return `<article class="metric ${tone || ""}"><span>${label}</span><strong>${value}</strong><small>${note}</small></article>`;
 }
 
 function renderDashboard() {
@@ -738,10 +738,10 @@ function renderDashboard() {
     </section>
 
     <section class="metric-grid">
-      ${metric("Sales", money(salesTotal()), `${state.invoices.length} invoices created`)}
-      ${metric("GST collected", money(gst), "GSTR-ready tax breakup")}
-      ${metric("Stock value", money(purchaseValue()), `${lowStock.length} low-stock alerts`)}
-      ${metric("Net profit", money(profit), "After expenses and item costs")}
+      ${metric("Sales", money(salesTotal()), `${state.invoices.length} invoices created`, "pos")}
+      ${metric("GST collected", money(gst), "GSTR-ready tax breakup", "net")}
+      ${metric("Stock value", money(purchaseValue()), `${lowStock.length} low-stock alerts`, "net")}
+      ${metric("Net profit", money(profit), "After expenses and item costs", profit >= 0 ? "pos" : "neg")}
     </section>
 
     <section class="three-col">
