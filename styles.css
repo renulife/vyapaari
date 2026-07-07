@@ -545,13 +545,38 @@ tbody tr:hover {
   background: #f1f3ef;
 }
 
+.billing-stack {
+  display: grid;
+  gap: 20px;
+}
+
+.invoice-preview-wrap {
+  display: grid;
+  gap: 12px;
+}
+
+.preview-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.preview-toolbar strong {
+  display: block;
+  font-size: 16px;
+}
+
 .invoice-preview {
-  background: #fff;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  background: #ffffff;
   border-radius: 14px;
-  padding: 22px;
   border: 1px solid rgba(23, 32, 26, 0.12);
-  position: sticky;
-  top: 24px;
+  box-shadow: 0 18px 44px rgba(17, 32, 26, 0.12);
+  overflow: hidden;
 }
 
 .preview-head {
@@ -1223,9 +1248,7 @@ tbody tr:hover {
   --doc-line: #e4e4e4;
   background: #ffffff;
   color: var(--doc-black);
-  border: 1px solid var(--doc-line);
-  border-radius: 14px;
-  padding: 26px;
+  padding: 34px 36px;
   font-size: 13px;
 }
 
@@ -1315,8 +1338,19 @@ tbody tr:hover {
 
 .doc-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   margin-top: 8px;
+}
+
+.doc-table col.col-sl {
+  width: 44px;
+}
+
+.doc-table col.col-price,
+.doc-table col.col-qty,
+.doc-table col.col-total {
+  width: 16%;
 }
 
 .doc-table thead th {
@@ -1342,6 +1376,11 @@ tbody tr:hover {
 
 .doc-sl {
   width: 34px;
+}
+
+.doc-desc {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .doc-desc span {

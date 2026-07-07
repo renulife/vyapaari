@@ -732,8 +732,7 @@ function renderBilling() {
   const itemOptions = (selected) => state.items.map((item) => `<option value="${item.id}" ${selected === item.id ? "selected" : ""}>${item.name} • ${money(item.sale)}</option>`).join("");
 
   return `
-    <section class="two-col">
-      <div class="section-stack">
+    <section class="billing-stack">
         <article class="panel">
           <div class="panel-title">
             <div><span class="kicker">Counter sale</span><h2>Create GST invoice</h2></div>
@@ -773,16 +772,21 @@ function renderBilling() {
           </div>
         </article>
 
+        <div class="invoice-preview-wrap">
+          <div class="preview-toolbar no-print">
+            <div><span class="kicker">Live preview</span><strong>Invoice document</strong></div>
+            <button class="primary-btn" type="button" data-print>Print / Save PDF</button>
+          </div>
+          <div class="invoice-preview">
+            ${renderInvoiceDocument(draft, totals, { number: `${state.business.invoicePrefix}-${1045 + state.invoices.length}`, date: today(), party: byId(state.parties, draft.partyId) })}
+          </div>
+          <p class="muted no-print" style="text-align:center;margin-top:12px">Includes automated GST, stock deduction, payment status, and accounting entries when saved.</p>
+        </div>
+
         <article class="panel">
           <div class="panel-title"><h3>Recent invoices</h3><span class="muted">${state.invoices.length} records</span></div>
           ${invoiceTable(state.invoices)}
         </article>
-      </div>
-
-      <aside class="invoice-preview">
-        ${renderInvoiceDocument(draft, totals, { number: `${state.business.invoicePrefix}-${1045 + state.invoices.length}`, date: today(), party: byId(state.parties, draft.partyId) })}
-        <p class="muted no-print">Includes automated GST, stock deduction, payment status, and accounting entries when saved.</p>
-      </aside>
     </section>
   `;
 }
@@ -829,6 +833,13 @@ function renderInvoiceDocument(draft, totals, meta) {
       </section>
 
       <table class="doc-table">
+        <colgroup>
+          <col class="col-sl" />
+          <col class="col-desc" />
+          <col class="col-price" />
+          <col class="col-qty" />
+          <col class="col-total" />
+        </colgroup>
         <thead>
           <tr><th class="doc-sl">SL.</th><th class="doc-desc">Item Description</th><th class="doc-num">Price</th><th class="doc-num">Qty.</th><th class="doc-num">Total</th></tr>
         </thead>
