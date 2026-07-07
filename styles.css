@@ -1,18 +1,20 @@
 :root {
   color-scheme: light;
-  --ink: #17201a;
-  --muted: #66746c;
-  --faint: #eef2ed;
-  --line: #dce4dc;
-  --paper: #fbfaf6;
+  --ink: #0f172a;
+  --muted: #64748b;
+  --faint: #eef2ff;
+  --line: #e2e8f0;
+  --paper: #f8fafc;
   --surface: #ffffff;
-  --soft: #f5f7f2;
-  --accent: #12805c;
-  --accent-dark: #0b5d43;
-  --warn: #b7791f;
-  --danger: #b42318;
+  --soft: #f1f5f9;
+  --accent: #4f46e5;
+  --accent-dark: #4338ca;
+  --accent-rgb: 79, 70, 229;
+  --warn: #b45309;
+  --danger: #dc2626;
+  --success: #059669;
   --blue: #2563eb;
-  --shadow: 0 22px 55px rgba(24, 42, 31, 0.12);
+  --shadow: 0 20px 45px rgba(15, 23, 42, 0.1);
 }
 
 * {
@@ -27,8 +29,8 @@ body {
   margin: 0;
   min-height: 100vh;
   background:
-    radial-gradient(circle at top left, rgba(18, 128, 92, 0.11), transparent 30rem),
-    linear-gradient(135deg, #fbfaf6 0%, #eef4ec 100%);
+    radial-gradient(circle at top left, rgba(79, 70, 229, 0.08), transparent 32rem),
+    linear-gradient(135deg, #f8fafc 0%, #eef2f8 100%);
   color: var(--ink);
   font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
@@ -55,8 +57,8 @@ button {
   flex-direction: column;
   gap: 28px;
   padding: 26px 18px;
-  border-right: 1px solid rgba(23, 32, 26, 0.1);
-  background: rgba(251, 250, 246, 0.86);
+  border-right: 1px solid rgba(15, 23, 42, 0.1);
+  background: rgba(248, 250, 252, 0.88);
   backdrop-filter: blur(18px);
   position: sticky;
   top: 0;
@@ -134,7 +136,7 @@ button {
   gap: 12px;
   align-items: center;
   padding: 14px;
-  border: 1px solid rgba(18, 128, 92, 0.16);
+  border: 1px solid rgba(79, 70, 229, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.68);
 }
@@ -150,7 +152,7 @@ button {
   height: 11px;
   border-radius: 999px;
   background: var(--accent);
-  box-shadow: 0 0 0 7px rgba(18, 128, 92, 0.12);
+  box-shadow: 0 0 0 7px rgba(79, 70, 229, 0.12);
 }
 
 .workspace {
@@ -200,7 +202,7 @@ button {
 .primary-btn {
   background: var(--accent);
   color: #fff;
-  box-shadow: 0 12px 26px rgba(18, 128, 92, 0.2);
+  box-shadow: 0 12px 26px rgba(79, 70, 229, 0.2);
 }
 
 .primary-btn:hover,
@@ -212,7 +214,7 @@ button {
 .ghost-btn {
   background: #fff;
   color: var(--ink);
-  border: 1px solid rgba(23, 32, 26, 0.1);
+  border: 1px solid rgba(15, 23, 42, 0.1);
 }
 
 .danger-btn {
@@ -249,7 +251,7 @@ button {
   padding: 34px;
   border-radius: 18px;
   background:
-    linear-gradient(115deg, rgba(23, 32, 26, 0.94), rgba(23, 32, 26, 0.74)),
+    linear-gradient(115deg, rgba(49, 46, 129, 0.95), rgba(67, 56, 202, 0.78)),
     url("https://images.unsplash.com/photo-1556745757-8d76bdb6984b?auto=format&fit=crop&w=1600&q=80");
   background-size: cover;
   background-position: center;
@@ -289,7 +291,7 @@ button {
 
 .today-panel,
 .panel {
-  border: 1px solid rgba(23, 32, 26, 0.1);
+  border: 1px solid rgba(15, 23, 42, 0.1);
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 18px 45px rgba(25, 42, 31, 0.08);
@@ -331,7 +333,7 @@ button {
   padding: 17px;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.78);
-  border: 1px solid rgba(23, 32, 26, 0.08);
+  border: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .metric span,
@@ -436,7 +438,7 @@ input,
 select,
 textarea {
   width: 100%;
-  border: 1px solid rgba(23, 32, 26, 0.14);
+  border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 10px;
   background: #fff;
   color: var(--ink);
@@ -448,7 +450,7 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 4px rgba(18, 128, 92, 0.1);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.1);
 }
 
 .table-wrap {
@@ -464,7 +466,7 @@ table {
 th,
 td {
   padding: 13px 12px;
-  border-bottom: 1px solid rgba(23, 32, 26, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
   text-align: left;
   vertical-align: top;
 }
@@ -481,7 +483,7 @@ tr {
 }
 
 tbody tr:hover {
-  background: rgba(18, 128, 92, 0.04);
+  background: rgba(79, 70, 229, 0.04);
 }
 
 .status {
@@ -496,7 +498,7 @@ tbody tr:hover {
 
 .status.paid,
 .status.ok {
-  background: rgba(18, 128, 92, 0.12);
+  background: rgba(79, 70, 229, 0.12);
   color: var(--accent-dark);
 }
 
@@ -522,7 +524,7 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 12px;
   padding: 12px 0;
-  border-bottom: 1px solid rgba(23, 32, 26, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .list-row:last-child {
@@ -536,7 +538,7 @@ tbody tr:hover {
 
 .invoice-line {
   display: grid;
-  grid-template-columns: 1fr 90px 110px 44px;
+  grid-template-columns: minmax(0, 1fr) 84px 168px 44px;
   gap: 8px;
   align-items: end;
 }
@@ -546,7 +548,201 @@ tbody tr:hover {
   height: 42px;
   border: 0;
   border-radius: 10px;
-  background: #f1f3ef;
+  background: var(--soft);
+  color: var(--muted);
+  font-size: 20px;
+}
+
+.icon-btn:hover {
+  background: rgba(var(--accent-rgb), 0.1);
+  color: var(--accent);
+}
+
+/* Discount input + % / amount toggle combo */
+.input-combo {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.input-combo input {
+  min-width: 0;
+  flex: 1;
+}
+
+.combo-toggle {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.combo-toggle button {
+  border: 0;
+  background: transparent;
+  padding: 0 12px;
+  font-weight: 700;
+  color: var(--muted);
+  min-width: 40px;
+}
+
+.combo-toggle button.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* Payment / balance box */
+.pay-box {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  background: var(--soft);
+}
+
+.pay-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.pay-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pay-chip {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.pay-chip:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pay-status {
+  margin: 12px 0 0;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.pay-status.ok { color: var(--success); }
+.pay-status.low { color: var(--warn); }
+.pay-status.danger { color: var(--danger); }
+
+input.balance-due {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+input.balance-clear {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.amount-due { color: var(--danger); }
+.amount-clear { color: var(--success); }
+
+/* Customer accounts */
+.account-layout {
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 8px;
+}
+
+.account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 460px;
+  overflow-y: auto;
+}
+
+.account-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: border-color 140ms ease, background 140ms ease;
+}
+
+.account-item:hover {
+  border-color: var(--accent);
+}
+
+.account-item.active {
+  border-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.06);
+}
+
+.account-name {
+  display: flex;
+  flex-direction: column;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.account-name small,
+.account-bal small {
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-bal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-weight: 700;
+}
+
+.account-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.account-summary > div {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  background: var(--soft);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.account-summary span {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.account-summary strong {
+  font-size: 20px;
+}
+
+.item-search {
+  width: 100%;
 }
 
 .billing-stack {
@@ -578,8 +774,8 @@ tbody tr:hover {
   margin: 0 auto;
   background: #ffffff;
   border-radius: 14px;
-  border: 1px solid rgba(23, 32, 26, 0.12);
-  box-shadow: 0 18px 44px rgba(17, 32, 26, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.12);
   overflow: hidden;
 }
 
@@ -595,7 +791,7 @@ tbody tr:hover {
   justify-content: space-between;
   gap: 12px;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(23, 32, 26, 0.08);
+  border-bottom: 1px solid rgba(15, 23, 42, 0.08);
 }
 
 .summary-line.total {
@@ -614,13 +810,13 @@ tbody tr:hover {
   overflow: hidden;
   border-radius: 14px;
   background: #fff;
-  border: 1px solid rgba(23, 32, 26, 0.1);
+  border: 1px solid rgba(15, 23, 42, 0.1);
 }
 
 .store-art {
   height: 120px;
   background:
-    linear-gradient(135deg, rgba(18, 128, 92, 0.16), rgba(255, 255, 255, 0)),
+    linear-gradient(135deg, rgba(79, 70, 229, 0.16), rgba(255, 255, 255, 0)),
     var(--soft);
   display: grid;
   place-items: center;
@@ -643,7 +839,7 @@ tbody tr:hover {
   gap: 20px;
   background:
     linear-gradient(120deg, rgba(255, 255, 255, 0.92), rgba(236, 245, 237, 0.9)),
-    radial-gradient(circle at right top, rgba(18, 128, 92, 0.16), transparent 28rem);
+    radial-gradient(circle at right top, rgba(79, 70, 229, 0.16), transparent 28rem);
 }
 
 .ai-hero h2 {
@@ -760,7 +956,7 @@ tbody tr:hover {
   padding: 6px;
   background: #fff;
   border-radius: 6px;
-  border: 1px solid rgba(23, 32, 26, 0.12);
+  border: 1px solid rgba(15, 23, 42, 0.12);
 }
 
 .barcode i {
@@ -829,7 +1025,7 @@ tbody tr:hover {
     position: static;
     height: auto;
     border-right: 0;
-    border-bottom: 1px solid rgba(23, 32, 26, 0.1);
+    border-bottom: 1px solid rgba(15, 23, 42, 0.1);
   }
 
   .nav-list {
@@ -848,8 +1044,19 @@ tbody tr:hover {
 
   .hero-workspace,
   .two-col,
-  .ai-main {
+  .ai-main,
+  .account-layout {
     grid-template-columns: 1fr;
+  }
+
+  .account-list {
+    flex-direction: row;
+    overflow-x: auto;
+    max-height: none;
+  }
+
+  .account-item {
+    min-width: 220px;
   }
 
   .invoice-preview {
@@ -893,7 +1100,30 @@ tbody tr:hover {
   }
 
   .invoice-line {
-    grid-template-columns: 1fr 78px;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--soft);
+  }
+
+  .invoice-line .field:first-child {
+    grid-column: 1 / -1;
+  }
+
+  .invoice-line .icon-btn {
+    align-self: center;
+    justify-self: end;
+  }
+
+  .account-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pay-head {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .hide-mobile {
@@ -913,9 +1143,9 @@ tbody tr:hover {
   padding: 24px;
   overflow-y: auto;
   background:
-    radial-gradient(circle at top left, rgba(18, 128, 92, 0.16), transparent 32rem),
-    radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.08), transparent 30rem),
-    linear-gradient(135deg, #fbfaf6 0%, #e7f0ea 100%);
+    radial-gradient(circle at top left, rgba(79, 70, 229, 0.18), transparent 32rem),
+    radial-gradient(circle at bottom right, rgba(37, 99, 235, 0.1), transparent 30rem),
+    linear-gradient(135deg, #f8fafc 0%, #e7ecf6 100%);
 }
 
 .auth-card {
@@ -1001,7 +1231,7 @@ tbody tr:hover {
 .user-pick.selected {
   border-color: var(--accent);
   background: #fff;
-  box-shadow: 0 8px 24px rgba(18, 128, 92, 0.14);
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.14);
 }
 
 .user-pick strong {
@@ -1185,7 +1415,7 @@ tbody tr:hover {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(17, 32, 26, 0.44);
+  background: rgba(15, 23, 42, 0.44);
   z-index: 40;
 }
 

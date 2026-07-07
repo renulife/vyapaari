@@ -105,7 +105,8 @@ const seedState = {
     paymentMode: "UPI",
     status: "Paid",
     gstMode: "exclusive",
-    lines: [{ itemId: "I-1001", qty: 1, discount: 0 }],
+    paidAmount: 0,
+    lines: [{ itemId: "I-1001", qty: 1, discount: 0, discountType: "percent" }],
   },
 };
 
@@ -437,6 +438,34 @@ function optionList(values) {
 }
 
 // Datalist that shows "Name — Category • HSN 1006" style hints.
+// Display label for an inventory item used inside the searchable line picker.
+function itemLabel(itemId) {
+  const item = byId(state.items, itemId);
+  return item ? `${item.name} • ${money(item.sale)}` : "";
+}
+
+// Datalist of every inventory item for searchable line selection (name, price, stock).
+function inventoryDatalist(id) {
+  const options = state.items
+    .map((item) => `<option value="${escapeHtml(item.name)} • ${money(item.sale)}">${escapeHtml(item.category || "")}${item.stock !== undefined ? ` • ${item.stock} ${escapeHtml(item.unit || "")} in stock` : ""}</option>`)
+    .join("");
+  return `<datalist id="${id}">${options}</datalist>`;
+}
+
+// Resolves a typed/selected item search string back to an inventory item id.
+function resolveItemPick(text) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+  const base = normalizeText(value.split("•")[0]);
+  return (
+    state.items.find((item) => normalizeText(item.name) === base) ||
+    state.items.find((item) => normalizeText(item.name).startsWith(base)) ||
+    state.items.find((item) => normalizeText(item.name).includes(base)) ||
+    findItemFromText(value) ||
+    null
+  );
+}
+
 function itemSuggestDatalist(id) {
   const options = rankedSuggestions(state.ai.memory.itemSuggestions)
     .map((entry) => `<option value="${escapeHtml(entry.name)}">${escapeHtml(entry.category || "")}${entry.hsn ? ` • HSN ${escapeHtml(entry.hsn)}` : ""}</option>`)
@@ -550,7 +579,10 @@ function itemTotal(line) {
   const gstRate = Number(line.gst ?? item.gst ?? 0);
   const gross = rate * qty;
   const subtotal = gross;
-  const discount = gross * (Number(line.discount || 0) / 100);
+  const discountType = line.discountType || "percent";
+  const discountValue = Number(line.discount || 0);
+  let discount = discountType === "amount" ? discountValue : gross * (discountValue / 100);
+  discount = Math.min(Math.max(discount, 0), gross);
   let taxable;
   let tax;
   let total;
@@ -581,6 +613,24 @@ function invoiceTotal(invoice) {
     },
     { subtotal: 0, discount: 0, taxable: 0, tax: 0, total: 0, profit: 0 },
   );
+}
+
+// Derives payment status + label from the invoice total and amount received.
+function paymentStatus(total, paid) {
+  const t = Math.round(Number(total || 0) * 100) / 100;
+  const p = Math.round(Number(paid || 0) * 100) / 100;
+  if (p <= 0) return { key: "Pending", cls: "danger", label: "Unpaid" };
+  if (p >= t) return { key: "Paid", cls: "ok", label: "Paid in full" };
+  return { key: "Partial", cls: "low", label: `Partially paid • ${money(t - p)} due` };
+}
+
+// Returns paid amount / balance for a saved invoice (falls back to status for legacy records).
+function invoicePayment(invoice) {
+  const total = invoiceTotal(invoice).total;
+  let paid = invoice.paidAmount;
+  if (paid === undefined || paid === null) paid = invoice.status === "Paid" ? total : 0;
+  paid = Math.min(Math.max(Number(paid || 0), 0), total);
+  return { total, paid, balance: Math.max(0, Math.round((total - paid) * 100) / 100) };
 }
 
 function salesTotal() {
@@ -726,10 +776,12 @@ function renderDashboard() {
 function renderBilling() {
   const draft = state.invoiceDraft;
   const totals = invoiceTotal(draft);
+  const paid = Number(draft.paidAmount || 0);
+  const balance = Math.max(0, Math.round((totals.total - paid) * 100) / 100);
+  const payStatus = paymentStatus(totals.total, paid);
   const partyOptions = [`<option value="Walk-in Customer">Walk-in Customer</option>`]
     .concat(state.parties.filter((p) => p.type === "Customer").map((p) => `<option value="${p.id}" ${draft.partyId === p.id ? "selected" : ""}>${p.name}</option>`))
     .join("");
-  const itemOptions = (selected) => state.items.map((item) => `<option value="${item.id}" ${selected === item.id ? "selected" : ""}>${item.name} • ${money(item.sale)}</option>`).join("");
 
   return `
     <section class="billing-stack">
@@ -740,8 +792,8 @@ function renderBilling() {
           </div>
           <div class="form-grid three">
             <div class="field"><label>Customer</label><select data-draft="partyId">${partyOptions}</select></div>
-            <div class="field"><label>Payment</label><select data-draft="paymentMode"><option>UPI</option><option>Cash</option><option>Card</option><option>Bank Transfer</option><option>Credit</option></select></div>
-            <div class="field"><label>Status</label><select data-draft="status"><option>Paid</option><option>Pending</option><option>Overdue</option></select></div>
+            <div class="field"><label>Payment mode</label><select data-draft="paymentMode"><option>UPI</option><option>Cash</option><option>Card</option><option>Bank Transfer</option><option>Credit</option></select></div>
+            <div class="field"><label>Status</label><input value="${payStatus.label}" readonly /></div>
             <div class="field full">
               <label>GST calculation</label>
               <div class="segmented" role="group" aria-label="GST calculation mode">
@@ -758,12 +810,37 @@ function renderBilling() {
           <div class="invoice-lines" style="margin-top:16px">
             ${draft.lines.map((line, index) => `
               <div class="invoice-line">
-                <div class="field"><label>Item</label><select data-line="${index}" data-prop="itemId">${itemOptions(line.itemId)}</select></div>
+                <div class="field"><label>Item</label><input class="item-search" list="inventoryItemList" data-line="${index}" data-prop="itemPick" value="${escapeHtml(itemLabel(line.itemId))}" placeholder="Search item by name" autocomplete="off" /></div>
                 <div class="field"><label>Qty</label><input data-line="${index}" data-prop="qty" type="number" min="1" value="${line.qty}" /></div>
-                <div class="field"><label>Discount %</label><input data-line="${index}" data-prop="discount" type="number" min="0" max="90" value="${line.discount}" /></div>
+                <div class="field"><label>Discount</label>
+                  <div class="input-combo">
+                    <input data-line="${index}" data-prop="discount" type="number" min="0" step="0.01" value="${line.discount}" />
+                    <div class="combo-toggle" role="group" aria-label="Discount type">
+                      <button type="button" class="${(line.discountType || "percent") === "percent" ? "active" : ""}" data-line="${index}" data-prop="discountType" data-value="percent">%</button>
+                      <button type="button" class="${line.discountType === "amount" ? "active" : ""}" data-line="${index}" data-prop="discountType" data-value="amount">₹</button>
+                    </div>
+                  </div>
+                </div>
                 <button class="icon-btn" type="button" data-remove-line="${index}" aria-label="Remove item">×</button>
               </div>
             `).join("")}
+          </div>
+          ${inventoryDatalist("inventoryItemList")}
+          <div class="pay-box" style="margin-top:18px">
+            <div class="pay-head">
+              <span class="kicker">Payment</span>
+              <div class="pay-chips">
+                <button type="button" class="pay-chip" data-pay-quick="full">Mark full paid</button>
+                <button type="button" class="pay-chip" data-pay-quick="half">Half</button>
+                <button type="button" class="pay-chip" data-pay-quick="none">Unpaid</button>
+              </div>
+            </div>
+            <div class="form-grid three">
+              <div class="field"><label>Invoice total</label><input value="${money(totals.total)}" readonly /></div>
+              <div class="field"><label>Amount received</label><input data-draft="paidAmount" type="number" min="0" step="0.01" value="${draft.paidAmount || 0}" /></div>
+              <div class="field"><label>Balance due</label><input class="${balance > 0 ? "balance-due" : "balance-clear"}" value="${money(balance)}" readonly /></div>
+            </div>
+            <p class="pay-status ${payStatus.cls}">${payStatus.label}</p>
           </div>
           <div class="topbar-actions" style="margin-top:18px; justify-content:flex-start">
             <button class="primary-btn" type="button" data-create-invoice>Save invoice</button>
@@ -795,6 +872,8 @@ function renderBilling() {
 function renderInvoiceDocument(draft, totals, meta) {
   const biz = state.business;
   const party = meta.party;
+  const docPaid = Math.min(Math.max(Number(draft.paidAmount || 0), 0), totals.total);
+  const docPay = { paid: docPaid, balance: Math.max(0, Math.round((totals.total - docPaid) * 100) / 100) };
   const rows = draft.lines
     .map((line, index) => {
       const item = byId(state.items, line.itemId);
@@ -860,10 +939,12 @@ function renderInvoiceDocument(draft, totals, meta) {
         </div>
         <div class="doc-totals">
           <div class="doc-total-row"><span>Sub Total</span><strong>${money(totals.subtotal)}</strong></div>
-          <div class="doc-total-row"><span>Discount</span><strong>${money(totals.discount)}</strong></div>
+          <div class="doc-total-row"><span>Discount</span><strong>- ${money(totals.discount)}</strong></div>
           <div class="doc-total-row"><span>Taxable</span><strong>${money(totals.taxable)}</strong></div>
           <div class="doc-total-row"><span>Tax (GST ${draft.gstMode})</span><strong>${money(totals.tax)}</strong></div>
           <div class="doc-total-row grand"><span>TOTAL</span><strong>${money(totals.total)}</strong></div>
+          <div class="doc-total-row"><span>Paid</span><strong>${money(docPay.paid)}</strong></div>
+          <div class="doc-total-row ${docPay.balance > 0 ? "due" : ""}"><span>Balance Due</span><strong>${money(docPay.balance)}</strong></div>
         </div>
       </section>
     </div>`;
@@ -873,20 +954,23 @@ function invoiceTable(invoices) {
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr><th>Invoice</th><th>Party</th><th>Date</th><th>GST</th><th>Payment</th><th>Status</th><th>Total</th><th>Action</th></tr></thead>
+        <thead><tr><th>Invoice</th><th>Party</th><th>Date</th><th>Payment</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead>
         <tbody>
           ${invoices.map((invoice) => {
             const party = byId(state.parties, invoice.partyId);
+            const pay = invoicePayment(invoice);
+            const st = paymentStatus(pay.total, pay.paid);
             return `
               <tr>
                 <td><strong>${invoice.id}</strong></td>
                 <td>${party?.name || invoice.partyId}</td>
                 <td>${invoice.date}</td>
-                <td><span class="status pending">${invoice.gstMode || "exclusive"}</span></td>
                 <td>${invoice.paymentMode}</td>
-                <td><span class="status ${statusClass(invoice.status)}">${invoice.status}</span></td>
-                <td><strong>${money(invoiceTotal(invoice).total)}</strong></td>
-                <td><button class="ghost-btn" type="button" data-mark-paid="${invoice.id}">Mark paid</button></td>
+                <td><strong>${money(pay.total)}</strong></td>
+                <td>${money(pay.paid)}</td>
+                <td><strong class="${pay.balance > 0 ? "amount-due" : ""}">${money(pay.balance)}</strong></td>
+                <td><span class="status ${st.cls === "ok" ? "ok" : st.cls === "low" ? "low" : "danger"}">${st.label}</span></td>
+                <td>${pay.balance > 0 ? `<button class="ghost-btn" type="button" data-collect="${invoice.id}">Record payment</button>` : `<span class="muted">Settled</span>`}</td>
               </tr>`;
           }).join("")}
         </tbody>
@@ -990,7 +1074,7 @@ function renderParties() {
                   <td>${party.type}</td>
                   <td>${party.phone}</td>
                   <td>${party.terms} days</td>
-                  <td><strong>${money(Math.abs(party.balance))}</strong><div class="table-sub">${party.balance >= 0 ? "Receivable" : "Payable"}</div></td>
+                  <td><strong class="${party.balance > 0 ? "amount-due" : ""}">${money(Math.abs(party.balance))}</strong><div class="table-sub">${party.balance >= 0 ? "Receivable" : "Payable"}</div></td>
                   <td><button class="ghost-btn" type="button" data-remind="${party.id}">Send reminder</button></td>
                 </tr>
               `).join("")}
@@ -998,7 +1082,67 @@ function renderParties() {
           </table>
         </div>
       </article>
+      ${renderCustomerAccounts()}
     </section>
+  `;
+}
+
+// Customer-wise account cards: total billed, received and outstanding balance with an invoice statement.
+function renderCustomerAccounts() {
+  const customers = state.parties.filter((p) => p.type === "Customer");
+  const active = state.customerAccountId || customers[0]?.id;
+  const selected = customers.find((c) => c.id === active) || customers[0];
+  if (!customers.length) return "";
+  const rows = customers
+    .map((party) => {
+      const invoices = state.invoices.filter((inv) => inv.partyId === party.id);
+      const acc = invoices.reduce((a, inv) => { const p = invoicePayment(inv); a.total += p.total; a.paid += p.paid; a.balance += p.balance; return a; }, { total: 0, paid: 0, balance: 0 });
+      return { party, invoices, acc };
+    })
+    .sort((a, b) => b.acc.balance - a.acc.balance);
+  const statement = selected ? rows.find((r) => r.party.id === selected.id) : null;
+  return `
+    <article class="panel">
+      <div class="panel-title"><div><span class="kicker">Customer accounts</span><h2>Balances & statements</h2></div><span class="muted">Tap a customer to view their ledger</span></div>
+      <div class="account-layout">
+        <div class="account-list">
+          ${rows.map((row) => `
+            <button type="button" class="account-item ${selected && row.party.id === selected.id ? "active" : ""}" data-customer-account="${row.party.id}">
+              <span class="account-name">${escapeHtml(row.party.name)}<small>${row.invoices.length} invoice${row.invoices.length === 1 ? "" : "s"}</small></span>
+              <span class="account-bal ${row.acc.balance > 0 ? "amount-due" : "amount-clear"}">${money(row.acc.balance)}<small>${row.acc.balance > 0 ? "due" : "settled"}</small></span>
+            </button>
+          `).join("")}
+        </div>
+        <div class="account-detail">
+          ${statement ? `
+            <div class="account-summary">
+              <div><span>Total billed</span><strong>${money(statement.acc.total)}</strong></div>
+              <div><span>Received</span><strong>${money(statement.acc.paid)}</strong></div>
+              <div><span>Outstanding</span><strong class="${statement.acc.balance > 0 ? "amount-due" : "amount-clear"}">${money(statement.acc.balance)}</strong></div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Invoice</th><th>Date</th><th>Total</th><th>Paid</th><th>Balance</th><th>Status</th></tr></thead>
+                <tbody>
+                  ${statement.invoices.length ? statement.invoices.map((inv) => {
+                    const p = invoicePayment(inv);
+                    const st = paymentStatus(p.total, p.paid);
+                    return `<tr>
+                      <td><strong>${inv.id}</strong></td>
+                      <td>${inv.date}</td>
+                      <td>${money(p.total)}</td>
+                      <td>${money(p.paid)}</td>
+                      <td><strong class="${p.balance > 0 ? "amount-due" : ""}">${money(p.balance)}</strong></td>
+                      <td><span class="status ${st.cls === "ok" ? "ok" : st.cls === "low" ? "low" : "danger"}">${st.label}</span></td>
+                    </tr>`;
+                  }).join("") : `<tr><td colspan="6" class="doc-empty">No invoices yet for this customer.</td></tr>`}
+                </tbody>
+              </table>
+            </div>
+          ` : `<p class="muted">Select a customer to see their statement.</p>`}
+        </div>
+      </div>
+    </article>
   `;
 }
 
@@ -1371,7 +1515,19 @@ function attachViewHandlers() {
     });
   });
 
-  document.querySelectorAll("[data-line]").forEach((field) => {
+  document.querySelectorAll("input[data-line], select[data-line]").forEach((field) => {
+    if (field.dataset.prop === "itemPick") {
+      // Searchable item picker: resolve the typed/selected label to an item id on change.
+      field.addEventListener("change", () => {
+        const index = Number(field.dataset.line);
+        const item = resolveItemPick(field.value);
+        if (!item) { showToast("No matching item. Pick one from the list."); field.value = itemLabel(state.invoiceDraft.lines[index].itemId); return; }
+        state.invoiceDraft.lines[index].itemId = item.id;
+        saveState();
+        render();
+      });
+      return;
+    }
     field.addEventListener("input", () => {
       const index = Number(field.dataset.line);
       const prop = field.dataset.prop;
@@ -1381,8 +1537,29 @@ function attachViewHandlers() {
     });
   });
 
+  // Discount type (% or amount) toggle buttons per line.
+  document.querySelectorAll("button[data-prop='discountType']").forEach((button) => {
+    button.addEventListener("click", () => {
+      const index = Number(button.dataset.line);
+      state.invoiceDraft.lines[index].discountType = button.dataset.value;
+      saveState();
+      render();
+    });
+  });
+
+  // Quick payment chips: full / half / unpaid.
+  document.querySelectorAll("[data-pay-quick]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const total = invoiceTotal(state.invoiceDraft).total;
+      const mode = button.dataset.payQuick;
+      state.invoiceDraft.paidAmount = mode === "full" ? Math.round(total * 100) / 100 : mode === "half" ? Math.round(total * 50) / 100 : 0;
+      saveState();
+      render();
+    });
+  });
+
   document.querySelector("[data-add-line]")?.addEventListener("click", () => {
-    state.invoiceDraft.lines.push({ itemId: state.items[0].id, qty: 1, discount: 0 });
+    state.invoiceDraft.lines.push({ itemId: state.items[0].id, qty: 1, discount: 0, discountType: "percent" });
     saveState();
     render();
   });
@@ -1393,7 +1570,7 @@ function attachViewHandlers() {
     if (!value) return;
     const item = findItemFromText(value) || state.items.find((row) => normalizeText(row.name) === normalizeText(value));
     if (!item) return showToast("No matching item found. Add it in Inventory first.");
-    state.invoiceDraft.lines.push({ itemId: item.id, qty: 1, discount: 0 });
+    state.invoiceDraft.lines.push({ itemId: item.id, qty: 1, discount: 0, discountType: "percent" });
     saveState();
     render();
     showToast(`${item.name} added to the invoice.`);
@@ -1427,14 +1604,24 @@ function attachViewHandlers() {
     });
   });
 
-  document.querySelectorAll("[data-mark-paid]").forEach((button) => {
+  document.querySelectorAll("[data-collect]").forEach((button) => {
     button.addEventListener("click", () => {
-      const invoice = state.invoices.find((row) => row.id === button.dataset.markPaid);
-      invoice.status = "Paid";
-      invoice.paymentMode = invoice.paymentMode === "Credit" ? "UPI" : invoice.paymentMode;
+      const invoice = state.invoices.find((row) => row.id === button.dataset.collect);
+      if (!invoice) return;
+      const pay = invoicePayment(invoice);
+      const input = prompt(`Record payment for ${invoice.id}\nBalance due: ${money(pay.balance)}\nEnter amount received:`, String(pay.balance));
+      if (input === null) return;
+      const amount = Math.min(Math.max(Number(input) || 0, 0), pay.balance);
+      if (amount <= 0) return showToast("Enter a valid amount.");
+      invoice.paidAmount = pay.paid + amount;
+      invoice.status = paymentStatus(pay.total, invoice.paidAmount).key;
+      if (invoice.paymentMode === "Credit") invoice.paymentMode = "UPI";
+      const party = byId(state.parties, invoice.partyId);
+      if (party) party.balance = Math.max(0, Math.round(party.balance - amount));
+      state.journals.unshift({ id: `J-${600 + state.journals.length}`, date: today(), debit: invoice.paymentMode, credit: "Accounts Receivable", amount: Math.round(amount), note: `${invoice.id} collection` });
       saveState();
       render();
-      showToast(`${invoice.id} marked as paid.`);
+      showToast(`${money(amount)} recorded for ${invoice.id}. ${paymentStatus(pay.total, invoice.paidAmount).label}.`);
     });
   });
 
@@ -1490,6 +1677,14 @@ function attachViewHandlers() {
     button.addEventListener("click", () => {
       const party = byId(state.parties, button.dataset.remind);
       showToast(`Payment reminder ready for ${party.name} on WhatsApp.`);
+    });
+  });
+
+  document.querySelectorAll("[data-customer-account]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.customerAccountId = button.dataset.customerAccount;
+      saveState();
+      render();
     });
   });
 
@@ -1558,12 +1753,19 @@ function attachViewHandlers() {
 
 function createInvoice() {
   const id = `${state.business.invoicePrefix}-${1045 + state.invoices.length}`;
-  const invoice = { id, date: today(), ...structuredClone(state.invoiceDraft) };
+  const draft = structuredClone(state.invoiceDraft);
+  const total = invoiceTotal(draft).total;
+  const paid = Math.min(Math.max(Number(draft.paidAmount || 0), 0), total);
+  draft.paidAmount = paid;
+  draft.status = paymentStatus(total, paid).key;
+  const invoice = { id, date: today(), ...draft };
   postInvoice(invoice);
-  state.invoiceDraft.lines = [{ itemId: state.items[0].id, qty: 1, discount: 0 }];
+  state.invoiceDraft.lines = [{ itemId: state.items[0].id, qty: 1, discount: 0, discountType: "percent" }];
+  state.invoiceDraft.paidAmount = 0;
   saveState();
   render();
-  showToast(`${id} saved. Stock, GST and accounting updated.`);
+  const st = paymentStatus(total, paid);
+  showToast(`${id} saved • ${st.label}. Stock, GST and ledger updated.`);
 }
 
 function addItem(event) {
@@ -1809,10 +2011,10 @@ function postInvoice(invoice) {
   });
   const invParty = byId(state.parties, invoice.partyId);
   if (invParty) recordPartySuggestion(invParty);
-  const total = invoiceTotal(invoice).total;
+  const pay = invoicePayment(invoice);
   const party = byId(state.parties, invoice.partyId);
-  if (party && invoice.status !== "Paid") party.balance += Math.round(total);
-  state.journals.unshift({ id: `J-${600 + state.journals.length}`, date: today(), debit: invoice.status === "Paid" ? invoice.paymentMode : "Accounts Receivable", credit: "Sales", amount: Math.round(total), note: invoice.id });
+  if (party && pay.balance > 0) party.balance += Math.round(pay.balance);
+  state.journals.unshift({ id: `J-${600 + state.journals.length}`, date: today(), debit: pay.paid > 0 ? invoice.paymentMode : "Accounts Receivable", credit: "Sales", amount: Math.round(pay.total), note: invoice.id });
 }
 
 function postPurchase(purchase) {
