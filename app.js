@@ -259,14 +259,70 @@ function showApp() {
 function logout() {
   clearSession();
   appShell.hidden = true;
+  authScreen = "auth";
   renderAuthGate();
   showToast("Signed out. Your data stays saved on this device.");
 }
 
+let authScreen = "landing";
+
 function renderAuthGate() {
   authGate.hidden = false;
-  authGate.innerHTML = needsSetup() ? setupScreen() : loginScreen();
+  authGate.classList.toggle("landing-mode", authScreen === "landing");
+  authGate.innerHTML = authScreen === "landing" ? landingScreen() : needsSetup() ? setupScreen() : loginScreen();
   attachAuthHandlers();
+}
+
+// Public landing / home page shown before sign in.
+function landingScreen() {
+  const setup = needsSetup();
+  const primaryCta = setup ? "Create free account" : "Open my business";
+  return `
+    <div class="landing">
+      <header class="landing-nav">
+        <div class="auth-brand"><div class="brand-mark">V</div><div><strong>Vyapaari</strong><span>Business OS</span></div></div>
+        <div class="landing-nav-actions">
+          <button class="ghost-btn" type="button" data-goto-auth>Sign in</button>
+          <button class="primary-btn" type="button" data-goto-auth>${setup ? "Sign up free" : "Get started"}</button>
+        </div>
+      </header>
+
+      <section class="landing-hero">
+        <span class="kicker">GST Billing • Inventory • Accounting • POS</span>
+        <h1>Run your entire business from one simple app</h1>
+        <p>Vyapaari gives Indian small businesses GST invoices with UPI payment QR, live stock, customer khata with balances, and GSTR-ready reports. Works fully offline — your data stays on your device.</p>
+        <div class="landing-cta">
+          <button class="primary-btn" type="button" data-goto-auth>${primaryCta}</button>
+          <button class="ghost-btn" type="button" data-goto-auth>Sign in</button>
+        </div>
+        <ul class="landing-trust">
+          <li>Works 100% offline</li>
+          <li>Data stays on your device</li>
+          <li>Free forever for one store</li>
+        </ul>
+      </section>
+
+      <section class="landing-stats" aria-label="What you get">
+        <article><span>Invoice with</span><strong>UPI QR</strong><small>Customers scan & pay instantly</small></article>
+        <article><span>GST reports</span><strong>GSTR-1 & 3B</strong><small>Tax breakup auto-calculated</small></article>
+        <article><span>Customer khata</span><strong>Balances</strong><small>Partial payments tracked per customer</small></article>
+        <article><span>Stock alerts</span><strong>Live</strong><small>Low-stock warnings as you bill</small></article>
+      </section>
+
+      <section class="landing-features" aria-label="Features">
+        <article class="panel"><h3>GST invoices + payment QR</h3><p>Professional invoice format with your logo, bank details and a scannable UPI QR that pre-fills the amount due.</p></article>
+        <article class="panel"><h3>Billing counter (POS)</h3><p>Fast item search with smart suggestions that learn what you sell most. Discounts in percent or rupees per line.</p></article>
+        <article class="panel"><h3>Partial payments & balances</h3><p>Record what the customer paid now — Vyapaari tracks the balance customer-wise and reminds on WhatsApp.</p></article>
+        <article class="panel"><h3>Inventory that updates itself</h3><p>Stock deducts on every sale automatically, with HSN, units, low-stock alerts and stock value reports.</p></article>
+        <article class="panel"><h3>Accounting built in</h3><p>Every invoice posts journal entries automatically — receivables, sales and taxes stay reconciled.</p></article>
+        <article class="panel"><h3>Backup you control</h3><p>Encrypted backup files plus optional Google Drive backup. Restore on any device in one click.</p></article>
+      </section>
+
+      <footer class="landing-footer">
+        <span>Vyapaari Business OS — made for Indian SMBs</span>
+        <button class="ghost-btn" type="button" data-goto-auth>${setup ? "Create your account" : "Sign in"}</button>
+      </footer>
+    </div>`;
 }
 
 function authBrand() {
@@ -290,6 +346,7 @@ function setupScreen() {
         <div class="field"><label>Confirm password</label><input name="confirm" type="password" minlength="4" required autocomplete="new-password" /></div>
         <button class="primary-btn auth-submit" type="submit">Create admin account</button>
       </form>
+      <button class="auth-back" type="button" data-back-landing>&larr; Back to home</button>
     </div>`;
 }
 
@@ -311,10 +368,21 @@ function loginScreen() {
         <label class="remember"><input type="checkbox" name="remember" /> Keep me signed in on this device</label>
         <button class="primary-btn auth-submit" type="submit">Sign in</button>
       </form>
+      <button class="auth-back" type="button" data-back-landing>&larr; Back to home</button>
     </div>`;
 }
 
 function attachAuthHandlers() {
+  authGate.querySelectorAll("[data-goto-auth]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      authScreen = "auth";
+      renderAuthGate();
+    });
+  });
+  authGate.querySelector("[data-back-landing]")?.addEventListener("click", () => {
+    authScreen = "landing";
+    renderAuthGate();
+  });
   document.getElementById("setupForm")?.addEventListener("submit", handleSetup);
   const loginForm = document.getElementById("loginForm");
   if (loginForm) {
