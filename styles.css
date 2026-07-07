@@ -1708,6 +1708,12 @@ input.balance-clear {
   color: #ffffff;
 }
 
+.doc-total-row.due span,
+.doc-total-row.due strong {
+  color: var(--doc-red);
+  font-weight: 700;
+}
+
 /* Print: show only the invoice document */
 @media print {
   body * {
