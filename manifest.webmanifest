@@ -1,0 +1,21 @@
+{
+  "name": "Vyapaari Business OS",
+  "short_name": "Vyapaari",
+  "description": "GST billing, inventory, accounting, POS and reporting web app for Indian small businesses.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#fbfaf6",
+  "theme_color": "#12805c",
+  "lang": "en-IN",
+  "categories": ["business", "finance", "productivity"],
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

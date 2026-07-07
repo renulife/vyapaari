@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Vyapaari is a GST billing, inventory, accounting, POS, payment, and reporting web app for Indian small businesses."
+    />
+    <title>Vyapaari | GST Billing, Inventory & Accounting</title>
+    <meta name="theme-color" content="#12805c" />
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="apple-touch-icon" href="icon.svg" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Vyapaari" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="stylesheet" href="styles.css?v=2" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="Main navigation">
+        <div class="brand">
+          <div class="brand-mark">V</div>
+          <div>
+            <strong>Vyapaari</strong>
+            <span>Business OS</span>
+          </div>
+        </div>
+
+        <nav id="mainNav" class="nav-list"></nav>
+
+        <section class="sync-panel" aria-label="Sync status">
+          <div class="sync-pulse"></div>
+          <div>
+            <strong>Offline-ready</strong>
+            <span>Cloud sync queued locally</span>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <span id="viewKicker" class="kicker">Today</span>
+            <h1 id="viewTitle">Business Dashboard</h1>
+          </div>
+          <div class="topbar-actions">
+            <button id="seedBtn" class="ghost-btn" type="button">Reset demo</button>
+            <button id="exportBtn" class="ghost-btn" type="button">Export data</button>
+            <button id="primaryAction" class="primary-btn" type="button">Create invoice</button>
+          </div>
+        </header>
+
+        <section id="toast" class="toast" role="status" aria-live="polite"></section>
+        <section id="app" class="view" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <template id="metricTemplate">
+      <article class="metric">
+        <span></span>
+        <strong></strong>
+        <small></small>
+      </article>
+    </template>
+
+    <script src="app.js?v=2"></script>
+  </body>
+</html>

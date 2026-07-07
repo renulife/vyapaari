@@ -1,0 +1,17 @@
+{
+  "name": "vyapaari-business-os",
+  "version": "1.0.0",
+  "description": "GST billing, inventory, accounting, POS and reporting web app for Indian small businesses.",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "gst-billing",
+    "inventory",
+    "accounting",
+    "pos",
+    "small-business"
+  ],
+  "license": "UNLICENSED"
+}
