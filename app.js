@@ -28,11 +28,17 @@ const seedState = {
   view: "dashboard",
   business: {
     name: "Shree Lakshmi Traders",
+    tagline: "Wholesale & Retail Distributors",
     gstin: "29AAZCS9478E1Z7",
     phone: "+91 98765 43210",
     address: "Bengaluru, Karnataka",
     invoicePrefix: "VYP",
     language: "English",
+    bankName: "State Bank of India",
+    accountName: "Shree Lakshmi Traders",
+    accountNo: "1234 5678 9012",
+    ifsc: "SBIN0001234",
+    upiId: "shreelakshmi@sbi",
   },
   settings: {
     theme: "Classic GST",
@@ -136,6 +142,7 @@ function migrateState(nextState) {
   nextState.ai.memory.itemSuggestions = nextState.ai.memory.itemSuggestions || {};
   nextState.ai.memory.partySuggestions = nextState.ai.memory.partySuggestions || {};
   nextState.settings = { ...structuredClone(seedState.settings), ...(nextState.settings || {}) };
+  nextState.business = { ...structuredClone(seedState.business), ...(nextState.business || {}) };
   nextState.users = (nextState.users || structuredClone(seedState.users)).map((user, index) => ({
     id: user.id || `U-${index + 1}`,
     name: user.name,
@@ -485,6 +492,47 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function formatDate(value) {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return value || "";
+  return date.toLocaleDateString("en-GB");
+}
+
+// Builds a UPI payment string so the QR opens the amount pre-filled in any UPI app.
+function buildUpiString(amount) {
+  const biz = state.business;
+  if (!biz.upiId) return biz.name || "Vyapaari";
+  const params = new URLSearchParams({ pa: biz.upiId, pn: biz.accountName || biz.name || "Vyapaari", cu: "INR" });
+  if (amount > 0) params.set("am", Number(amount).toFixed(2));
+  return `upi://pay?${params.toString()}`;
+}
+
+// Draws the payment QR onto the invoice canvas using the vendored qrcode generator.
+function renderInvoiceQr(amount) {
+  const canvas = document.getElementById("invoiceQr");
+  if (!canvas || typeof qrcode !== "function") return;
+  try {
+    const qr = qrcode(0, "M");
+    qr.addData(buildUpiString(amount));
+    qr.make();
+    const count = qr.getModuleCount();
+    const size = canvas.width;
+    const cell = Math.floor(size / count);
+    const offset = Math.floor((size - cell * count) / 2);
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, size, size);
+    ctx.fillStyle = "#111111";
+    for (let r = 0; r < count; r += 1) {
+      for (let c = 0; c < count; c += 1) {
+        if (qr.isDark(r, c)) ctx.fillRect(offset + c * cell, offset + r * cell, cell, cell);
+      }
+    }
+  } catch {
+    /* QR is optional; ignore render errors */
+  }
+}
+
 function byId(list, id) {
   return list.find((item) => item.id === id);
 }
@@ -732,28 +780,82 @@ function renderBilling() {
       </div>
 
       <aside class="invoice-preview">
-        <div class="preview-head">
-          <div><strong>${state.business.name}</strong><div class="table-sub">${state.business.gstin}</div></div>
-          <div style="text-align:right"><strong>GST Invoice</strong><div class="table-sub">${state.business.invoicePrefix}-${1045 + state.invoices.length}</div></div>
-        </div>
-        <div class="list">
-          ${draft.lines.map((line) => {
-            const item = byId(state.items, line.itemId);
-            const row = itemTotal(line);
-            return `<div class="list-row"><div><strong>${item?.name || "Item"}</strong><div class="table-sub">${line.qty} × ${money(item?.sale)} • GST ${item?.gst || 0}% ${draft.gstMode}</div></div><strong>${money(row.total)}</strong></div>`;
-          }).join("")}
-        </div>
-        <div style="margin-top:16px">
-          <div class="summary-line"><span>${draft.gstMode === "inclusive" ? "Gross amount" : "Subtotal"}</span><strong>${money(totals.subtotal)}</strong></div>
-          <div class="summary-line"><span>Discount</span><strong>${money(totals.discount)}</strong></div>
-          <div class="summary-line"><span>Taxable value</span><strong>${money(totals.taxable)}</strong></div>
-          <div class="summary-line"><span>GST ${draft.gstMode}</span><strong>${money(totals.tax)}</strong></div>
-          <div class="summary-line total"><span>Total</span><strong>${money(totals.total)}</strong></div>
-        </div>
-        <p class="muted">Includes automated GST, stock deduction, payment status, and accounting entries when saved.</p>
+        ${renderInvoiceDocument(draft, totals, { number: `${state.business.invoicePrefix}-${1045 + state.invoices.length}`, date: today(), party: byId(state.parties, draft.partyId) })}
+        <p class="muted no-print">Includes automated GST, stock deduction, payment status, and accounting entries when saved.</p>
       </aside>
     </section>
   `;
+}
+
+// Renders the printable invoice document in the SL / Description / Price / Qty / Total format with a payment QR.
+function renderInvoiceDocument(draft, totals, meta) {
+  const biz = state.business;
+  const party = meta.party;
+  const rows = draft.lines
+    .map((line, index) => {
+      const item = byId(state.items, line.itemId);
+      const row = itemTotal(line);
+      return `<tr>
+        <td class="doc-sl">${index + 1}</td>
+        <td class="doc-desc"><strong>${escapeHtml(item?.name || "Item")}</strong>${item?.hsn ? `<span>HSN ${escapeHtml(item.hsn)} • GST ${item?.gst || 0}%</span>` : ""}</td>
+        <td class="doc-num">${money(item?.sale)}</td>
+        <td class="doc-num">${line.qty}</td>
+        <td class="doc-num">${money(row.total)}</td>
+      </tr>`;
+    })
+    .join("");
+  const partyBlock = party
+    ? `<strong>${escapeHtml(party.name)}</strong>${party.phone ? `<span>${escapeHtml(party.phone)}</span>` : ""}${party.type ? `<span>${escapeHtml(party.type)}</span>` : ""}`
+    : `<strong>Walk-in customer</strong><span>Add a party to personalise this bill</span>`;
+  return `
+    <div class="invoice-doc" id="invoiceDoc">
+      <header class="doc-head">
+        <div class="doc-brand">
+          <div class="doc-logo">${escapeHtml((biz.name || "V").slice(0, 1).toUpperCase())}</div>
+          <div class="doc-brand-text">
+            <strong>${escapeHtml(biz.name || "Your Business")}</strong>
+            <span>${escapeHtml(biz.tagline || "GST Billing & Distribution")}</span>
+          </div>
+        </div>
+        <div class="doc-title">
+          <h2>INVOICE</h2>
+          <div class="doc-meta"><span>Invoice #: <strong>${escapeHtml(meta.number)}</strong></span><span>Date: <strong>${escapeHtml(formatDate(meta.date))}</strong></span></div>
+        </div>
+      </header>
+
+      <section class="doc-billto">
+        <span class="doc-label">Invoice To</span>
+        <div class="doc-party">${partyBlock}</div>
+      </section>
+
+      <table class="doc-table">
+        <thead>
+          <tr><th class="doc-sl">SL.</th><th class="doc-desc">Item Description</th><th class="doc-num">Price</th><th class="doc-num">Qty.</th><th class="doc-num">Total</th></tr>
+        </thead>
+        <tbody>${rows || `<tr><td colspan="5" class="doc-empty">Add items to build the invoice</td></tr>`}</tbody>
+      </table>
+
+      <section class="doc-footer">
+        <div class="doc-payment">
+          <span class="doc-label">Payment Info</span>
+          <div class="doc-pay-row"><span>Bank</span><strong>${escapeHtml(biz.bankName || "-")}</strong></div>
+          <div class="doc-pay-row"><span>A/C No</span><strong>${escapeHtml(biz.accountNo || "-")}</strong></div>
+          <div class="doc-pay-row"><span>A/C Name</span><strong>${escapeHtml(biz.accountName || biz.name || "-")}</strong></div>
+          <div class="doc-pay-row"><span>IFSC</span><strong>${escapeHtml(biz.ifsc || "-")}</strong></div>
+          <div class="doc-qr">
+            <canvas id="invoiceQr" width="112" height="112" aria-label="Scan to pay via UPI"></canvas>
+            <span>Scan to pay${biz.upiId ? ` • ${escapeHtml(biz.upiId)}` : ""}</span>
+          </div>
+        </div>
+        <div class="doc-totals">
+          <div class="doc-total-row"><span>Sub Total</span><strong>${money(totals.subtotal)}</strong></div>
+          <div class="doc-total-row"><span>Discount</span><strong>${money(totals.discount)}</strong></div>
+          <div class="doc-total-row"><span>Taxable</span><strong>${money(totals.taxable)}</strong></div>
+          <div class="doc-total-row"><span>Tax (GST ${draft.gstMode})</span><strong>${money(totals.tax)}</strong></div>
+          <div class="doc-total-row grand"><span>TOTAL</span><strong>${money(totals.total)}</strong></div>
+        </div>
+      </section>
+    </div>`;
 }
 
 function invoiceTable(invoices) {
@@ -1238,6 +1340,10 @@ function render() {
   primaryAction.textContent = state.view === "billing" ? "Save invoice" : "Create invoice";
   app.innerHTML = renderer();
   attachViewHandlers();
+  if (state.view === "billing") {
+    const totals = invoiceTotal(state.invoiceDraft);
+    renderInvoiceQr(totals.total);
+  }
 }
 
 function attachViewHandlers() {
