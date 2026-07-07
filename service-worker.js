@@ -1,5 +1,5 @@
-const CACHE_NAME = "vyapaari-v2";
-const ASSETS = ["./", "./index.html", "./styles.css?v=2", "./app.js?v=2", "./manifest.webmanifest", "./icon.svg"];
+const CACHE_NAME = "vyapaari-v3";
+const ASSETS = ["./", "./index.html", "./styles.css?v=3", "./app.js?v=3", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
@@ -13,6 +13,19 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
+// Network-first for same-origin so updated app code reaches users, with offline cache fallback.
 self.addEventListener("fetch", (event) => {
-  event.respondWith(caches.match(event.request).then((cached) => cached || fetch(event.request)));
+  const { request } = event;
+  if (request.method !== "GET") return;
+  const sameOrigin = new URL(request.url).origin === self.location.origin;
+  if (!sameOrigin) return;
+  event.respondWith(
+    fetch(request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(request, copy)).catch(() => {});
+        return response;
+      })
+      .catch(() => caches.match(request).then((cached) => cached || caches.match("./index.html"))),
+  );
 });

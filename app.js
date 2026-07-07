@@ -1768,11 +1768,37 @@ function convertOrder() {
   showToast(`${order.id} converted into an invoice draft record.`);
 }
 
-function addUser() {
-  state.users.push({ name: `Staff ${state.users.length}`, role: "Sales", access: "Billing, inventory lookup" });
+async function addStaffUser(event) {
+  event.preventDefault();
+  if (!accessFor(sessionUser?.role).canManageUsers) return showToast("Only an Admin can add staff.");
+  const data = Object.fromEntries(new FormData(event.target).entries());
+  const salt = randomSalt();
+  const pinHash = await hashPin(data.pin, salt);
+  state.users.push({
+    id: `U-${Date.now()}`,
+    name: data.name,
+    role: data.role,
+    access: accessFor(data.role).label,
+    active: true,
+    salt,
+    pinHash,
+  });
   saveState();
   render();
-  showToast("Staff user added with limited access.");
+  showToast(`${data.name} added as ${data.role}.`);
+}
+
+async function resetUserPassword(userId) {
+  if (!accessFor(sessionUser?.role).canManageUsers) return;
+  const user = state.users.find((row) => row.id === userId);
+  if (!user) return;
+  const pin = window.prompt(`Set a new password for ${user.name}`);
+  if (!pin || pin.length < 4) return showToast("Password must be at least 4 characters.");
+  user.salt = randomSalt();
+  user.pinHash = await hashPin(pin, user.salt);
+  saveState();
+  render();
+  showToast(`Password updated for ${user.name}.`);
 }
 
 function downloadCsv() {
