@@ -411,8 +411,35 @@ function renderUserChip() {
   chip.innerHTML = `
     <span class="avatar">${escapeHtml(sessionUser.name.slice(0, 1).toUpperCase())}</span>
     <span class="user-meta"><strong>${escapeHtml(sessionUser.name)}</strong><small>${escapeHtml(sessionUser.role)}</small></span>
-    <button class="ghost-btn" type="button" data-logout>Sign out</button>`;
+    <div class="user-chip-actions">
+      <button class="ghost-btn" type="button" data-change-pass title="Change your password">Password</button>
+      <button class="ghost-btn" type="button" data-logout>Sign out</button>
+    </div>`;
   chip.querySelector("[data-logout]")?.addEventListener("click", logout);
+  chip.querySelector("[data-change-pass]")?.addEventListener("click", changeMyPassword);
+}
+
+// Self-service password change for the signed-in user.
+async function changeMyPassword() {
+  if (!sessionUser) return;
+  const user = state.users.find((u) => u.id === sessionUser.id);
+  if (!user) return;
+  if (user.pinHash) {
+    const current = window.prompt("Enter your current password to confirm it's you:");
+    if (current === null) return;
+    const currentHash = await hashPin(current, user.salt);
+    if (currentHash !== user.pinHash) return showToast("Current password is incorrect.");
+  }
+  const next = window.prompt("Enter your new password (at least 4 characters):");
+  if (next === null) return;
+  if (!next || next.length < 4) return showToast("Password must be at least 4 characters.");
+  const confirmPass = window.prompt("Re-enter your new password to confirm:");
+  if (confirmPass === null) return;
+  if (confirmPass !== next) return showToast("Passwords do not match.");
+  user.salt = randomSalt();
+  user.pinHash = await hashPin(next, user.salt);
+  saveState();
+  showToast("Your password has been updated.");
 }
 
 /* ============================================================
@@ -1022,6 +1049,8 @@ function invoiceTable(invoices) {
 function renderInventory() {
   const lowStock = state.items.filter((item) => item.stock <= item.minStock).length;
   const expiring = state.items.filter((item) => item.expiry && new Date(item.expiry) < new Date("2026-09-30")).length;
+  const editing = state.editItemId ? byId(state.items, state.editItemId) : null;
+  const v = (val) => (val === undefined || val === null ? "" : escapeHtml(String(val)));
   return `
     <section class="section-stack">
       <div class="metric-grid">
@@ -1032,21 +1061,21 @@ function renderInventory() {
       </div>
 
       <article class="panel">
-        <div class="panel-title"><div><span class="kicker">Stock master</span><h2>Add item, barcode, GST and batch</h2></div><span class="muted">Type a name you have used before to auto-fill</span></div>
-        ${suggestionChips("itemForm")}
+        <div class="panel-title"><div><span class="kicker">Stock master</span><h2>${editing ? `Edit: ${escapeHtml(editing.name)}` : "Add item, barcode, GST and batch"}</h2></div><span class="muted">${editing ? "Update the details and save your changes" : "Type a name you have used before to auto-fill"}</span></div>
+        ${editing ? "" : suggestionChips("itemForm")}
         <form id="itemForm" class="form-grid three">
-          <div class="field"><label>Name</label><input name="name" list="itemNameSuggest" required placeholder="Start typing, e.g. Premium Rice 25kg" autocomplete="off" /></div>
-          <div class="field"><label>HSN</label><input name="hsn" list="hsnSuggest" required placeholder="HSN code" /></div>
-          <div class="field"><label>Category</label><input name="category" list="categorySuggest" required placeholder="Category" /></div>
-          <div class="field"><label>Stock</label><input name="stock" type="number" min="0" required /></div>
-          <div class="field"><label>Min stock</label><input name="minStock" type="number" min="0" required /></div>
-          <div class="field"><label>Unit</label><input name="unit" list="unitSuggest" value="pcs" required /></div>
-          <div class="field"><label>Purchase price</label><input name="purchase" type="number" min="0" required /></div>
-          <div class="field"><label>Sale price</label><input name="sale" type="number" min="0" required /></div>
-          <div class="field"><label>GST %</label><input name="gst" type="number" min="0" required /></div>
-          <div class="field"><label>Batch</label><input name="batch" placeholder="Optional" /></div>
-          <div class="field"><label>Expiry</label><input name="expiry" type="date" /></div>
-          <div class="field"><label>&nbsp;</label><button class="primary-btn" type="submit">Add item</button></div>
+          <div class="field"><label>Name</label><input name="name" list="itemNameSuggest" required placeholder="Start typing, e.g. Premium Rice 25kg" autocomplete="off" value="${editing ? v(editing.name) : ""}" /></div>
+          <div class="field"><label>HSN</label><input name="hsn" list="hsnSuggest" required placeholder="HSN code" value="${editing ? v(editing.hsn) : ""}" /></div>
+          <div class="field"><label>Category</label><input name="category" list="categorySuggest" required placeholder="Category" value="${editing ? v(editing.category) : ""}" /></div>
+          <div class="field"><label>Stock</label><input name="stock" type="number" min="0" required value="${editing ? v(editing.stock) : ""}" /></div>
+          <div class="field"><label>Min stock</label><input name="minStock" type="number" min="0" required value="${editing ? v(editing.minStock) : ""}" /></div>
+          <div class="field"><label>Unit</label><input name="unit" list="unitSuggest" value="${editing ? v(editing.unit) : "pcs"}" required /></div>
+          <div class="field"><label>Purchase price</label><input name="purchase" type="number" min="0" required value="${editing ? v(editing.purchase) : ""}" /></div>
+          <div class="field"><label>Sale price</label><input name="sale" type="number" min="0" required value="${editing ? v(editing.sale) : ""}" /></div>
+          <div class="field"><label>GST %</label><input name="gst" type="number" min="0" required value="${editing ? v(editing.gst) : ""}" /></div>
+          <div class="field"><label>Batch</label><input name="batch" placeholder="Optional" value="${editing ? v(editing.batch) : ""}" /></div>
+          <div class="field"><label>Expiry</label><input name="expiry" type="date" value="${editing ? v(editing.expiry) : ""}" /></div>
+          <div class="field"><label>&nbsp;</label><div class="form-actions"><button class="primary-btn" type="submit">${editing ? "Save changes" : "Add item"}</button>${editing ? `<button class="ghost-btn" type="button" data-cancel-edit>Cancel</button>` : ""}</div></div>
         </form>
         ${itemSuggestDatalist("itemNameSuggest")}
         <datalist id="categorySuggest">${optionList(uniqueValues(state.ai.memory.itemSuggestions, "category"))}</datalist>
@@ -1058,9 +1087,9 @@ function renderInventory() {
         <div class="panel-title"><h3>Inventory register</h3><button class="ghost-btn" type="button" data-bulk-price>Bulk +5% price</button></div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>Item</th><th>Barcode</th><th>Stock</th><th>Buy/Sell</th><th>GST</th><th>Batch</th><th>Expiry</th><th>Adjust</th></tr></thead>
+            <thead><tr><th>Item</th><th>Barcode</th><th>Stock</th><th>Buy/Sell</th><th>GST</th><th>Batch</th><th>Expiry</th><th>Adjust</th><th>Manage</th></tr></thead>
             <tbody>
-              ${state.items.map((item) => `
+              ${state.items.length ? state.items.map((item) => `
                 <tr>
                   <td><strong>${item.name}</strong><div class="table-sub">${item.category} • HSN ${item.hsn}</div></td>
                   <td>${barcodeFor(item.id)}</td>
@@ -1070,8 +1099,9 @@ function renderInventory() {
                   <td>${item.batch || "—"}</td>
                   <td>${item.expiry || "—"}</td>
                   <td><button class="ghost-btn" data-stock="${item.id}" data-delta="5" type="button">+5</button> <button class="ghost-btn" data-stock="${item.id}" data-delta="-1" type="button">-1</button></td>
+                  <td class="row-actions"><button class="ghost-btn" data-edit-item="${item.id}" type="button">Edit</button> <button class="danger-btn" data-del-item="${item.id}" type="button">Delete</button></td>
                 </tr>
-              `).join("")}
+              `).join("") : `<tr><td colspan="9" class="table-empty">No items yet. Add your first product above to start billing.</td></tr>`}
             </tbody>
           </table>
         </div>
@@ -1289,7 +1319,7 @@ function renderOcr() {
     <section class="two-col">
       <article class="panel">
         <div class="panel-title"><div><span class="kicker">Purchase automation</span><h2>Scan bill to purchase entry</h2></div></div>
-        <p class="muted">Upload a bill image/PDF. This launch build simulates OCR extraction so the workflow can be demoed without server processing.</p>
+        <p class="muted">Upload a bill image/PDF and review the extracted line items before posting them as a purchase entry.</p>
         <form id="ocrForm" class="form-grid">
           <div class="field full"><label>Supplier bill</label><input name="file" type="file" accept="image/*,.pdf" /></div>
           <div class="field"><label>Supplier</label><input name="supplier" value="FreshMart Supply" /></div>
@@ -1707,6 +1737,17 @@ function attachViewHandlers() {
     });
   });
 
+  document.querySelectorAll("[data-edit-item]").forEach((button) => {
+    button.addEventListener("click", () => startEditItem(button.dataset.editItem));
+  });
+  document.querySelectorAll("[data-del-item]").forEach((button) => {
+    button.addEventListener("click", () => deleteItem(button.dataset.delItem));
+  });
+  document.querySelector("[data-cancel-edit]")?.addEventListener("click", () => {
+    state.editItemId = null;
+    render();
+  });
+
   document.querySelector("[data-bulk-price]")?.addEventListener("click", () => {
     state.items = state.items.map((item) => ({ ...item, sale: Math.round(item.sale * 1.05) }));
     saveState();
@@ -1813,8 +1854,7 @@ function createInvoice() {
 function addItem(event) {
   event.preventDefault();
   const data = Object.fromEntries(new FormData(event.target).entries());
-  const item = {
-    id: `I-${1001 + state.items.length}`,
+  const fields = {
     name: data.name,
     hsn: data.hsn,
     category: data.category,
@@ -1827,11 +1867,38 @@ function addItem(event) {
     batch: data.batch,
     expiry: data.expiry,
   };
+  if (state.editItemId) {
+    const existing = byId(state.items, state.editItemId);
+    if (existing) Object.assign(existing, fields);
+    state.editItemId = null;
+    recordItemSuggestion(existing || fields);
+    saveState();
+    render();
+    return showToast("Item updated.");
+  }
+  const item = { id: `I-${Date.now()}`, ...fields };
   state.items.unshift(item);
   recordItemSuggestion(item);
   saveState();
   render();
   showToast("Item saved. Vyapaari will suggest it next time you type the name.");
+}
+
+function startEditItem(itemId) {
+  state.editItemId = itemId;
+  render();
+  document.getElementById("itemForm")?.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function deleteItem(itemId) {
+  const item = byId(state.items, itemId);
+  if (!item) return;
+  if (!confirm(`Delete "${item.name}"? This removes it from your inventory. Existing invoices are not affected.`)) return;
+  state.items = state.items.filter((i) => i.id !== itemId);
+  if (state.editItemId === itemId) state.editItemId = null;
+  saveState();
+  render();
+  showToast("Item deleted.");
 }
 
 function addParty(event) {
@@ -2368,13 +2435,17 @@ function downloadBlob(content, filename, type) {
 
 document.getElementById("exportBtn").addEventListener("click", exportData);
 document.getElementById("seedBtn").addEventListener("click", () => {
-  if (!confirm("Reset demo business data? Your login accounts will be kept.")) return;
+  if (!confirm("Reset all business data (invoices, items, parties, accounting)? Your login accounts and business profile will be kept. This cannot be undone.")) return;
   const keepUsers = structuredClone(state.users);
+  const keepBusiness = structuredClone(state.business);
+  const keepSettings = structuredClone(state.settings);
   state = structuredClone(seedState);
   state.users = keepUsers;
+  state.business = keepBusiness;
+  state.settings = keepSettings;
   saveState();
   showApp();
-  showToast("Demo data reset. Accounts kept.");
+  showToast("Business data cleared. Accounts and profile kept.");
 });
 primaryAction.addEventListener("click", () => {
   if (state.view === "billing") createInvoice();
@@ -2411,5 +2482,20 @@ if ("serviceWorker" in navigator) {
     window.location.reload();
   });
 }
+
+// Live connection status: reflect the real network state instead of a static "offline" label.
+function updateSyncStatus() {
+  const panel = document.getElementById("syncPanel");
+  const title = document.getElementById("syncTitle");
+  const note = document.getElementById("syncNote");
+  if (!panel || !title || !note) return;
+  const online = navigator.onLine;
+  panel.classList.toggle("is-offline", !online);
+  title.textContent = online ? "Online" : "Offline";
+  note.textContent = online ? "Saved securely on this device" : "No internet — you can keep working";
+}
+window.addEventListener("online", updateSyncStatus);
+window.addEventListener("offline", updateSyncStatus);
+updateSyncStatus();
 
 bootAuth();

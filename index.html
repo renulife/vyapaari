@@ -20,7 +20,7 @@
       rel="stylesheet"
     />
     <link rel="manifest" href="manifest.webmanifest" />
-    <link rel="stylesheet" href="styles.css?v=12" />
+    <link rel="stylesheet" href="styles.css?v=13" />
   </head>
   <body>
     <div id="authGate" class="auth-gate" hidden></div>
@@ -40,11 +40,11 @@
 
         <div id="userChip" class="user-chip" aria-label="Signed in user"></div>
 
-        <section class="sync-panel" aria-label="Sync status">
+        <section id="syncPanel" class="sync-panel" aria-label="Connection status">
           <div class="sync-pulse"></div>
           <div>
-            <strong>Offline-ready</strong>
-            <span>Cloud sync queued locally</span>
+            <strong id="syncTitle">Online</strong>
+            <span id="syncNote">Saved securely on this device</span>
           </div>
         </section>
       </aside>
@@ -61,7 +61,7 @@
             </div>
           </div>
           <div class="topbar-actions">
-            <button id="seedBtn" class="ghost-btn" type="button">Reset demo</button>
+            <button id="seedBtn" class="ghost-btn" type="button">Reset data</button>
             <button id="exportBtn" class="ghost-btn" type="button">Export data</button>
             <button id="primaryAction" class="primary-btn" type="button">Create invoice</button>
           </div>
@@ -81,6 +81,6 @@
     </template>
 
     <script src="qrcode.min.js"></script>
-    <script src="app.js?v=12"></script>
+    <script src="app.js?v=13"></script>
   </body>
 </html>
