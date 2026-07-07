@@ -2358,7 +2358,14 @@ scrim?.addEventListener("click", closeMobileNav);
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("service-worker.js").catch(() => {});
+    navigator.serviceWorker.register("service-worker.js").then((reg) => reg.update()).catch(() => {});
+  });
+  // When a new service worker takes control, reload once so users get the latest UI immediately.
+  let swReloaded = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (swReloaded) return;
+    swReloaded = true;
+    window.location.reload();
   });
 }
 
