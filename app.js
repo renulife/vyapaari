@@ -27,18 +27,18 @@ const SESSION_KEY = "vyapaari.session.v1";
 const seedState = {
   view: "dashboard",
   business: {
-    name: "Shree Lakshmi Traders",
-    tagline: "Wholesale & Retail Distributors",
-    gstin: "29AAZCS9478E1Z7",
-    phone: "+91 98765 43210",
-    address: "Bengaluru, Karnataka",
-    invoicePrefix: "VYP",
+    name: "My Business",
+    tagline: "",
+    gstin: "",
+    phone: "",
+    address: "",
+    invoicePrefix: "INV",
     language: "English",
-    bankName: "State Bank of India",
-    accountName: "Shree Lakshmi Traders",
-    accountNo: "1234 5678 9012",
-    ifsc: "SBIN0001234",
-    upiId: "shreelakshmi@sbi",
+    bankName: "",
+    accountName: "",
+    accountNo: "",
+    ifsc: "",
+    upiId: "",
   },
   settings: {
     theme: "Classic GST",
@@ -52,61 +52,33 @@ const seedState = {
   },
   users: [
     { id: "U-1", name: "Owner", role: "Admin", access: "All modules", active: true, pinHash: "", salt: "" },
-    { id: "U-2", name: "Ravi", role: "Cashier", access: "Billing, POS, payments", active: true, pinHash: "", salt: "" },
-    { id: "U-3", name: "Meena", role: "Accountant", access: "Reports, accounting, GST", active: true, pinHash: "", salt: "" },
   ],
-  parties: [
-    { id: "P-101", name: "Ankit Retail", type: "Customer", phone: "9876500011", balance: 18420, terms: 15 },
-    { id: "P-102", name: "FreshMart Supply", type: "Supplier", phone: "9876500022", balance: -12200, terms: 7 },
-    { id: "P-103", name: "Kumar Stores", type: "Customer", phone: "9876500033", balance: 5400, terms: 10 },
-    { id: "P-104", name: "Metro Wholesale", type: "Supplier", phone: "9876500044", balance: -28600, terms: 5 },
-  ],
-  items: [
-    { id: "I-1001", name: "Premium Rice 25kg", hsn: "1006", category: "Grocery", stock: 48, minStock: 18, unit: "bag", purchase: 1210, sale: 1399, gst: 5, batch: "R25-A", expiry: "2026-12-20" },
-    { id: "I-1002", name: "Sunflower Oil 1L", hsn: "1512", category: "FMCG", stock: 16, minStock: 24, unit: "bottle", purchase: 112, sale: 139, gst: 5, batch: "SO-77", expiry: "2026-10-12" },
-    { id: "I-1003", name: "LED Bulb 12W", hsn: "8539", category: "Electrical", stock: 92, minStock: 20, unit: "pcs", purchase: 62, sale: 110, gst: 18, batch: "LB-4", expiry: "" },
-    { id: "I-1004", name: "Notebook A4", hsn: "4820", category: "Stationery", stock: 130, minStock: 35, unit: "pcs", purchase: 28, sale: 45, gst: 12, batch: "NB-22", expiry: "" },
-    { id: "I-1005", name: "Masala Mix 500g", hsn: "0910", category: "FMCG", stock: 11, minStock: 18, unit: "pkt", purchase: 74, sale: 98, gst: 5, batch: "MM-9", expiry: "2026-08-25" },
-  ],
-  invoices: [
-    { id: "VYP-1042", partyId: "P-101", date: "2026-07-07", status: "Paid", paymentMode: "UPI", lines: [{ itemId: "I-1001", qty: 2, discount: 0 }, { itemId: "I-1003", qty: 6, discount: 4 }] },
-    { id: "VYP-1043", partyId: "P-103", date: "2026-07-06", status: "Pending", paymentMode: "Credit", lines: [{ itemId: "I-1002", qty: 24, discount: 2 }, { itemId: "I-1004", qty: 30, discount: 5 }] },
-    { id: "VYP-1044", partyId: "Walk-in Customer", date: "2026-07-07", status: "Paid", paymentMode: "Cash", lines: [{ itemId: "I-1005", qty: 5, discount: 0 }, { itemId: "I-1003", qty: 2, discount: 0 }] },
-  ],
-  expenses: [
-    { id: "E-201", date: "2026-07-07", category: "Rent", amount: 18000, gst: 0, note: "Shop rent" },
-    { id: "E-202", date: "2026-07-06", category: "Transport", amount: 2800, gst: 5, note: "Delivery challan expenses" },
-    { id: "E-203", date: "2026-07-05", category: "Staff", amount: 9200, gst: 0, note: "Weekly payout" },
-  ],
-  orders: [
-    { id: "ORD-81", customer: "Asha Home Needs", amount: 12450, status: "Ready to invoice", channel: "Online store" },
-    { id: "ORD-82", customer: "Ravi Kirana", amount: 6200, status: "Packed", channel: "WhatsApp" },
-  ],
-  journals: [
-    { id: "J-501", date: "2026-07-07", debit: "Cash", credit: "Sales", amount: 1540, note: "POS cash sale" },
-  ],
-  purchases: [
-    { id: "PUR-301", supplier: "FreshMart Supply", date: "2026-07-06", gstMode: "exclusive", lines: [{ itemId: "I-1002", qty: 24, price: 112, gst: 5 }] },
-  ],
+  parties: [],
+  items: [],
+  invoices: [],
+  expenses: [],
+  orders: [],
+  journals: [],
+  purchases: [],
   ai: {
     memory: {
-      itemAliases: { rice: "I-1001", oil: "I-1002", bulb: "I-1003", notebook: "I-1004", masala: "I-1005" },
-      partyAliases: { ankit: "P-101", kumar: "P-103", freshmart: "P-102", metro: "P-104" },
+      itemAliases: {},
+      partyAliases: {},
       learned: [],
       itemSuggestions: {},
       partySuggestions: {},
     },
     messages: [
-      { role: "assistant", text: "I can create sales invoices, purchase invoices, inventory items, reminders and bulk uploads. Try: sale Ankit Retail Premium Rice 25kg x2 paid upi inclusive" },
+      { role: "assistant", text: "Welcome! I can create sales invoices, purchase invoices, inventory items, reminders and bulk uploads. Add your first items and parties, then try: sale <party> <item> x2 paid upi" },
     ],
   },
   invoiceDraft: {
-    partyId: "P-101",
+    partyId: "Walk-in Customer",
     paymentMode: "UPI",
     status: "Paid",
     gstMode: "exclusive",
     paidAmount: 0,
-    lines: [{ itemId: "I-1001", qty: 1, discount: 0, discountType: "percent" }],
+    lines: [],
   },
 };
 
@@ -1627,6 +1599,7 @@ function attachViewHandlers() {
   });
 
   document.querySelector("[data-add-line]")?.addEventListener("click", () => {
+    if (!state.items.length) return showToast("Add items in Inventory first.");
     state.invoiceDraft.lines.push({ itemId: state.items[0].id, qty: 1, discount: 0, discountType: "percent" });
     saveState();
     render();
@@ -1820,6 +1793,7 @@ function attachViewHandlers() {
 }
 
 function createInvoice() {
+  if (!state.invoiceDraft.lines.length) return showToast("Add at least one item to the invoice first.");
   const id = `${state.business.invoicePrefix}-${1045 + state.invoices.length}`;
   const draft = structuredClone(state.invoiceDraft);
   const total = invoiceTotal(draft).total;
@@ -1828,7 +1802,7 @@ function createInvoice() {
   draft.status = paymentStatus(total, paid).key;
   const invoice = { id, date: today(), ...draft };
   postInvoice(invoice);
-  state.invoiceDraft.lines = [{ itemId: state.items[0].id, qty: 1, discount: 0, discountType: "percent" }];
+  state.invoiceDraft.lines = state.items.length ? [{ itemId: state.items[0].id, qty: 1, discount: 0, discountType: "percent" }] : [];
   state.invoiceDraft.paidAmount = 0;
   saveState();
   render();
@@ -2149,6 +2123,7 @@ function loadAIBulkFile(event) {
 function convertOrder() {
   if (!state.orders.length) return showToast("No online orders to convert.");
   const order = state.orders.shift();
+  if (!state.items.length) return showToast("Add items in Inventory before converting orders.");
   state.invoices.unshift({ id: `${state.business.invoicePrefix}-${1045 + state.invoices.length}`, partyId: "Walk-in Customer", date: today(), status: "Pending", paymentMode: "Credit", lines: [{ itemId: state.items[0].id, qty: 1, discount: 0 }] });
   saveState();
   render();
