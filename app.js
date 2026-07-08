@@ -936,6 +936,97 @@ function renderBilling() {
   `;
 }
 
+// Dedicated Invoices segment: every saved invoice with its payment status, filters and actions.
+function renderInvoicesView() {
+  const filter = state.invoiceFilter || "All";
+  const search = (state.invoiceSearch || "").trim().toLowerCase();
+  const all = state.invoices.map((invoice) => {
+    const party = byId(state.parties, invoice.partyId);
+    const pay = invoicePayment(invoice);
+    const st = paymentStatus(pay.total, pay.paid);
+    return { invoice, party, pay, st };
+  });
+
+  const counts = {
+    All: all.length,
+    Paid: all.filter((r) => r.st.key === "Paid").length,
+    Partial: all.filter((r) => r.st.key === "Partial").length,
+    Pending: all.filter((r) => r.st.key === "Pending").length,
+  };
+  const outstanding = all.reduce((sum, r) => sum + r.pay.balance, 0);
+  const collected = all.reduce((sum, r) => sum + r.pay.paid, 0);
+
+  const filtered = all.filter((r) => {
+    if (filter !== "All" && r.st.key !== filter) return false;
+    if (!search) return true;
+    const name = (r.party?.name || String(r.invoice.partyId) || "").toLowerCase();
+    return r.invoice.id.toLowerCase().includes(search) || name.includes(search);
+  });
+
+  const tab = (key, label) => `<button type="button" class="filter-tab ${filter === key ? "active" : ""}" data-invoice-filter="${key}">${label} <span>${counts[key]}</span></button>`;
+
+  const rows = filtered.length
+    ? filtered.map(({ invoice, party, pay, st }) => `
+        <tr>
+          <td><strong>${escapeHtml(invoice.id)}</strong></td>
+          <td>${escapeHtml(party?.name || String(invoice.partyId))}</td>
+          <td>${escapeHtml(formatDate(invoice.date))}</td>
+          <td>${escapeHtml(invoice.paymentMode || "-")}</td>
+          <td class="doc-num"><strong>${money(pay.total)}</strong></td>
+          <td class="doc-num">${money(pay.paid)}</td>
+          <td class="doc-num"><strong class="${pay.balance > 0 ? "amount-due" : ""}">${money(pay.balance)}</strong></td>
+          <td><span class="status ${st.cls === "ok" ? "ok" : st.cls === "low" ? "low" : "danger"}">${st.label}</span></td>
+          <td class="row-actions">
+            <button class="ghost-btn" type="button" data-view-invoice="${invoice.id}">View / Print</button>
+            ${pay.balance > 0 ? `<button class="primary-btn" type="button" data-collect="${invoice.id}">Record payment</button>` : `<span class="muted">Settled</span>`}
+          </td>
+        </tr>`).join("")
+    : `<tr><td colspan="9" class="table-empty">No invoices ${filter !== "All" ? `with status "${filter}"` : "yet"}. Create one from Billing &amp; POS.</td></tr>`;
+
+  return `
+    <section class="section-stack">
+      <div class="metric-grid">
+        ${metric("Invoices", all.length, "All time")}
+        ${metric("Collected", money(collected), "Payments received")}
+        ${metric("Outstanding", money(outstanding), `${counts.Partial + counts.Pending} unpaid`)}
+        ${metric("Paid in full", counts.Paid, "Settled invoices")}
+      </div>
+
+      <article class="panel">
+        <div class="panel-title">
+          <div><span class="kicker">Invoice register</span><h2>All invoices &amp; status</h2></div>
+          <button class="primary-btn" type="button" data-go="billing">New invoice</button>
+        </div>
+        <div class="invoice-controls">
+          <div class="filter-tabs" role="group" aria-label="Filter by status">
+            ${tab("All", "All")}${tab("Paid", "Paid")}${tab("Partial", "Partial")}${tab("Pending", "Unpaid")}
+          </div>
+          <input id="invoiceSearch" type="search" placeholder="Search by invoice # or customer" value="${escapeHtml(state.invoiceSearch || "")}" autocomplete="off" />
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Invoice</th><th>Customer</th><th>Date</th><th>Mode</th><th class="doc-num">Total</th><th class="doc-num">Paid</th><th class="doc-num">Balance</th><th>Status</th><th>Actions</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+    <div id="printMount" aria-hidden="true"></div>`;
+}
+
+// Mounts a saved invoice into the print area and opens the browser print dialog.
+function printSavedInvoice(invoiceId) {
+  const invoice = state.invoices.find((row) => row.id === invoiceId);
+  if (!invoice) return;
+  const mount = document.getElementById("printMount");
+  if (!mount) return;
+  const totals = invoiceTotal(invoice);
+  const party = byId(state.parties, invoice.partyId);
+  mount.innerHTML = renderInvoiceDocument(invoice, totals, { number: invoice.id, date: invoice.date, party });
+  renderInvoiceQr(totals.total);
+  window.print();
+}
+
 // Renders the printable invoice document in the SL / Description / Price / Qty / Total format with a payment QR.
 function renderInvoiceDocument(draft, totals, meta) {
   const biz = state.business;
@@ -1548,6 +1639,7 @@ function renderUsersPanel() {
 const renderers = {
   dashboard: ["Today", "Business Dashboard", renderDashboard],
   billing: ["GST invoice, POS, payments", "Billing & POS", renderBilling],
+  invoices: ["All invoices and their status", "Invoices", renderInvoicesView],
   ai: ["Chat, learn, bulk upload", "AI Assistant", renderAI],
   inventory: ["Stock, barcode, batches", "Inventory", renderInventory],
   parties: ["Customers, suppliers, dues", "Parties", renderParties],
@@ -1575,6 +1667,27 @@ function render() {
 function attachViewHandlers() {
   document.querySelectorAll("[data-go]").forEach((button) => {
     button.addEventListener("click", () => setView(button.dataset.go));
+  });
+
+  document.querySelectorAll("[data-invoice-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.invoiceFilter = button.dataset.invoiceFilter;
+      render();
+    });
+  });
+  const invoiceSearch = document.getElementById("invoiceSearch");
+  invoiceSearch?.addEventListener("input", () => {
+    state.invoiceSearch = invoiceSearch.value;
+    const pos = invoiceSearch.selectionStart;
+    render();
+    const next = document.getElementById("invoiceSearch");
+    if (next) {
+      next.focus();
+      try { next.setSelectionRange(pos, pos); } catch {}
+    }
+  });
+  document.querySelectorAll("[data-view-invoice]").forEach((button) => {
+    button.addEventListener("click", () => printSavedInvoice(button.dataset.viewInvoice));
   });
 
   document.querySelectorAll("[data-draft]").forEach((field) => {
@@ -1665,7 +1778,7 @@ function attachViewHandlers() {
   });
 
   document.querySelector("[data-create-invoice]")?.addEventListener("click", createInvoice);
-  document.querySelector("[data-print]")?.addEventListener("click", () => window.print());
+  document.querySelectorAll("[data-print]").forEach((btn) => btn.addEventListener("click", () => window.print()));
   document.querySelector("[data-share-whatsapp]")?.addEventListener("click", () => showToast("WhatsApp payment reminder prepared for the selected customer."));
   document.querySelectorAll("[data-gst-mode]").forEach((button) => {
     button.addEventListener("click", () => {

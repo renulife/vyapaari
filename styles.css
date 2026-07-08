@@ -1430,6 +1430,71 @@ input.balance-clear {
   flex: 1;
 }
 
+/* Invoices segment controls */
+.invoice-controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  margin: 14px 0 6px;
+}
+
+.filter-tabs {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.filter-tab {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filter-tab span {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  background: var(--soft);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+
+.filter-tab.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.filter-tab.active span {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+
+.invoice-controls input[type="search"] {
+  flex: 1;
+  min-width: 200px;
+  max-width: 320px;
+}
+
+#printMount {
+  display: none;
+}
+
+@media print {
+  #printMount {
+    display: block;
+  }
+}
+
 /* ============================================================
    BACKUP GRID + ROW ACTIONS
    ============================================================ */
@@ -2091,7 +2156,18 @@ th {
 }
 
 /* Print: show only the invoice document */
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
 @media print {
+  html,
+  body {
+    background: #fff !important;
+    height: auto !important;
+  }
+
   body * {
     visibility: hidden;
   }
@@ -2103,11 +2179,28 @@ th {
 
   #invoiceDoc {
     position: absolute;
-    inset: 0;
+    top: 0;
+    left: 0;
+    right: 0;
     margin: 0;
+    padding: 0;
     border: 0;
     border-radius: 0;
     width: 100%;
+    box-shadow: none;
+    font-size: 12px;
+  }
+
+  /* Keep the whole invoice on one page and avoid awkward row breaks. */
+  #invoiceDoc .doc-table,
+  #invoiceDoc .doc-footer {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  #invoiceDoc tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
 
   .no-print {

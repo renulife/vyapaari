@@ -1,5 +1,5 @@
-const CACHE_NAME = "vyapaari-v14";
-const ASSETS = ["./", "./index.html", "./styles.css?v=14", "./app.js?v=14", "./qrcode.min.js", "./manifest.webmanifest", "./icon.svg"];
+const CACHE_NAME = "vyapaari-v15";
+const ASSETS = ["./", "./index.html", "./styles.css?v=15", "./app.js?v=15", "./qrcode.min.js", "./manifest.webmanifest", "./icon.svg"];
 
 self.addEventListener("install", (event) => {
   self.skipWaiting();
