@@ -3,6 +3,7 @@ const STORAGE_KEY = "vyapaari.live.v2";
 const navItems = [
   ["dashboard", "Dashboard", "⌂"],
   ["billing", "Billing & POS", "₹"],
+  ["invoices", "Invoices", "▤"],
   ["ai", "AI Assistant", "AI"],
   ["inventory", "Inventory", "▦"],
   ["parties", "Parties", "◉"],
@@ -16,10 +17,10 @@ const navItems = [
 // Role-based access control. "all" grants every module; otherwise an allowlist of view ids.
 const ROLE_ACCESS = {
   Admin: { modules: "all", label: "All modules", canManageUsers: true },
-  Manager: { modules: ["dashboard", "billing", "ai", "inventory", "parties", "accounting", "reports", "ocr", "store"], label: "Everything except launch settings", canManageUsers: false },
-  Cashier: { modules: ["dashboard", "billing", "inventory", "parties"], label: "Billing, POS, payments", canManageUsers: false },
-  Accountant: { modules: ["dashboard", "accounting", "reports", "parties"], label: "Reports, accounting, GST", canManageUsers: false },
-  Sales: { modules: ["dashboard", "billing", "store", "parties"], label: "Billing, online store", canManageUsers: false },
+  Manager: { modules: ["dashboard", "billing", "invoices", "ai", "inventory", "parties", "accounting", "reports", "ocr", "store"], label: "Everything except launch settings", canManageUsers: false },
+  Cashier: { modules: ["dashboard", "billing", "invoices", "inventory", "parties"], label: "Billing, POS, payments", canManageUsers: false },
+  Accountant: { modules: ["dashboard", "invoices", "accounting", "reports", "parties"], label: "Reports, accounting, GST", canManageUsers: false },
+  Sales: { modules: ["dashboard", "billing", "invoices", "store", "parties"], label: "Billing, online store", canManageUsers: false },
 };
 const ROLE_LIST = Object.keys(ROLE_ACCESS);
 const SESSION_KEY = "vyapaari.session.v1";
